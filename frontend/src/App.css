@@ -1,4 +1,3 @@
-/* Reset ringan */
 *,
 *::before,
 *::after {
@@ -15,18 +14,15 @@ body,
 body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-  background: #0b1120;
+  background: radial-gradient(circle at top, #0f172a 0, #020617 50%, #000 100%);
   color: #e5e7eb;
 }
 
-/* Container utama dari App.js */
 .App {
   height: 100vh;
   display: flex;
   flex-direction: column;
 }
-
-/* Layout Mission Planner */
 
 .mp-root {
   flex: 1;
@@ -43,7 +39,7 @@ body {
 
 .mp-sidebar {
   width: 280px;
-  background: linear-gradient(180deg, #020617, #020617 50%, #020617);
+  background: linear-gradient(180deg, #020617 0%, #020617 45%, #020617 100%);
   border-right: 1px solid #1f2937;
   padding: 14px 14px 10px;
   display: flex;
@@ -53,26 +49,27 @@ body {
 
 .mp-sidebar-title {
   margin: 0 0 6px;
-  font-size: 0.95rem;
-  letter-spacing: 0.12em;
+  font-size: 0.9rem;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #9ca3af;
 }
 
 .mp-panel {
-  background: rgba(15, 23, 42, 0.95);
-  border-radius: 8px;
-  border: 1px solid #1f2937;
+  background: radial-gradient(circle at top left, #111827, #020617 70%);
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
   overflow: hidden;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.45);
 }
 
 .mp-panel-header {
   padding: 6px 10px;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  background: #111827;
-  border-bottom: 1px solid #1f2937;
+  background: rgba(15, 23, 42, 0.98);
+  border-bottom: 1px solid rgba(31, 41, 55, 0.8);
   color: #9ca3af;
 }
 
@@ -102,6 +99,12 @@ body {
   color: #e5e7eb;
 }
 
+.mp-value-small {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #e5e7eb;
+}
+
 .mp-status-text {
   font-size: 0.82rem;
   color: #d1d5db;
@@ -112,7 +115,7 @@ body {
 .mp-badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: 2px 9px;
   border-radius: 999px;
   font-size: 0.7rem;
   font-weight: 600;
@@ -120,42 +123,43 @@ body {
 }
 
 .mp-badge-connected {
-  background: rgba(16, 185, 129, 0.18);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.5);
+  background: radial-gradient(circle at top, #16a34a33, #16a34a11);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.6);
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
 }
 
 .mp-badge-disconnected {
-  background: rgba(239, 68, 68, 0.18);
+  background: radial-gradient(circle at top, #ef444433, #ef444411);
   color: #f87171;
-  border: 1px solid rgba(239, 68, 68, 0.5);
+  border: 1px solid rgba(248, 113, 113, 0.6);
 }
 
 .mp-badge-error {
-  background: rgba(249, 115, 22, 0.18);
+  background: radial-gradient(circle at top, #f9731633, #f9731611);
   color: #fb923c;
-  border: 1px solid rgba(249, 115, 22, 0.5);
+  border: 1px solid rgba(249, 115, 22, 0.6);
 }
 
-/* AREA MAIN (MAP) */
+/* MAIN AREA */
 
 .mp-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #020617;
+  background: radial-gradient(circle at top left, #020617, #000 70%);
   min-width: 0;
 }
 
-/* TOOLBAR ATAS */
+/* TOOLBAR */
 
 .mp-toolbar {
-  height: 44px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
-  background: linear-gradient(90deg, #020617, #111827);
+  padding: 0 16px;
+  background: linear-gradient(90deg, #020617, #0f172a 40%, #020617 100%);
   border-bottom: 1px solid #1f2937;
 }
 
@@ -165,7 +169,7 @@ body {
 }
 
 .mp-title {
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 600;
 }
 
@@ -183,9 +187,10 @@ body {
 .mp-chip {
   border-radius: 999px;
   border: 1px solid #374151;
-  padding: 3px 8px;
+  padding: 4px 10px;
   font-size: 0.75rem;
   color: #e5e7eb;
+  background: rgba(15, 23, 42, 0.8);
 }
 
 /* MAP */
@@ -203,7 +208,69 @@ body {
   height: 100%;
 }
 
-/* STATUS BAR BAWAH */
+/* HUD di atas map */
+
+.mp-hud {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.mp-hud-card {
+  pointer-events: auto;
+  min-width: 230px;
+  background: rgba(15, 23, 42, 0.88);
+  border-radius: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  box-shadow: 0 18px 35px rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(10px);
+}
+
+.mp-hud-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.mp-hud-title {
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+.mp-hud-pill {
+  font-size: 0.72rem;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.mp-hud-pill-fix {
+  background: rgba(16, 185, 129, 0.18);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.7);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.7);
+}
+
+.mp-hud-pill-nofix {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.7);
+}
+
+.mp-hud-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 14px;
+}
+
+/* STATUS BAR */
 
 .mp-statusbar {
   height: 28px;
@@ -239,5 +306,9 @@ body {
 
   .mp-chip {
     display: none;
+  }
+
+  .mp-hud-card {
+    min-width: 190px;
   }
 }

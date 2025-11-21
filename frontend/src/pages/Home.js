@@ -60,12 +60,31 @@ function Home() {
     return 'Menunggu data...';
   })();
 
+  const fixQuality = (() => {
+    if (sats === 0) return 'No signal';
+    if (sats <= 3) return 'Poor';
+    if (sats <= 7) return 'Moderate';
+    return 'Good';
+  })();
+
+  const currentLat = hasFixNow
+    ? Number(gpsData.latitude).toFixed(6)
+    : lastFix
+    ? lastFix.latitude.toFixed(6)
+    : '-';
+
+  const currentLng = hasFixNow
+    ? Number(gpsData.longitude).toFixed(6)
+    : lastFix
+    ? lastFix.longitude.toFixed(6)
+    : '-';
+
   return (
     <div className="mp-root">
       <div className="mp-layout">
-        {/* SIDEBAR – mirip mission planner panel kiri */}
+        {/* SIDEBAR */}
         <aside className="mp-sidebar">
-          <h2 className="mp-sidebar-title">Telemetry</h2>
+          <h2 className="mp-sidebar-title">TELEMETRY</h2>
 
           <div className="mp-panel">
             <div className="mp-panel-header">Connection</div>
@@ -90,6 +109,10 @@ function Home() {
                   {hasFixNow || lastFix ? 'YES' : 'NO'}
                 </span>
               </div>
+              <div>
+                <span className="mp-label">Quality</span>
+                <span className="mp-value">{fixQuality}</span>
+              </div>
             </div>
           </div>
 
@@ -98,23 +121,11 @@ function Home() {
             <div className="mp-panel-body mp-grid">
               <div>
                 <span className="mp-label">Latitude</span>
-                <span className="mp-value">
-                  {hasFixNow
-                    ? Number(gpsData.latitude).toFixed(6)
-                    : lastFix
-                    ? lastFix.latitude.toFixed(6)
-                    : '-'}
-                </span>
+                <span className="mp-value">{currentLat}</span>
               </div>
               <div>
                 <span className="mp-label">Longitude</span>
-                <span className="mp-value">
-                  {hasFixNow
-                    ? Number(gpsData.longitude).toFixed(6)
-                    : lastFix
-                    ? lastFix.longitude.toFixed(6)
-                    : '-'}
-                </span>
+                <span className="mp-value">{currentLng}</span>
               </div>
             </div>
           </div>
@@ -131,11 +142,11 @@ function Home() {
           </div>
         </aside>
 
-        {/* AREA MAP UTAMA – full seperti Mission Planner */}
+        {/* MAIN AREA */}
         <main className="mp-main">
           <div className="mp-toolbar">
             <div className="mp-toolbar-left">
-              <span className="mp-title">GPS Monitoring</span>
+              <span className="mp-title">Data GPS dari Arduino</span>
               <span className="mp-subtitle">
                 {hasFixNow ? 'Live Position' : 'Waiting for Fix'}
               </span>
@@ -157,6 +168,42 @@ function Home() {
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
             />
+
+            {/* HUD overlay di atas map */}
+            <div className="mp-hud">
+              <div className="mp-hud-card">
+                <div className="mp-hud-row">
+                  <span className="mp-hud-title">GNSS</span>
+                  <span
+                    className={
+                      hasFixNow
+                        ? 'mp-hud-pill mp-hud-pill-fix'
+                        : 'mp-hud-pill mp-hud-pill-nofix'
+                    }
+                  >
+                    {hasFixNow ? 'FIX' : 'NO FIX'}
+                  </span>
+                </div>
+                <div className="mp-hud-grid">
+                  <div>
+                    <span className="mp-label">Sat</span>
+                    <span className="mp-value">{sats}</span>
+                  </div>
+                  <div>
+                    <span className="mp-label">Quality</span>
+                    <span className="mp-value">{fixQuality}</span>
+                  </div>
+                  <div>
+                    <span className="mp-label">Lat</span>
+                    <span className="mp-value-small">{currentLat}</span>
+                  </div>
+                  <div>
+                    <span className="mp-label">Lng</span>
+                    <span className="mp-value-small">{currentLng}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="mp-statusbar">
