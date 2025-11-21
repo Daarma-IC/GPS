@@ -7,7 +7,7 @@ const app = express();
 const wss = new WebSocket.Server({ port: 8080 });
 
 const serialPort = new SerialPort({
-  path: 'COM3',      // atau port yang sesuai
+  path: 'COM9',      // atau port yang sesuai
   baudRate: 115200,  // SAMA dengan di Arduino
 });
 // Parser per baris
