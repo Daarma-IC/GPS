@@ -11,6 +11,8 @@
   "license": "ISC",
   "dependencies": {
     "@serialport/parser-readline": "^13.0.0",
+    "axios": "^1.13.2",
+    "cors": "^2.8.5",
     "express": "^5.1.0",
     "serialport": "^13.0.0",
     "ws": "^8.18.3"

@@ -1,4 +1,3 @@
-// src/pages/Home.js
 import React, { useRef, useState, useEffect } from "react";
 import useWebSocket from "react-use-websocket";
 
@@ -11,7 +10,7 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 
-// Fix default icon leaflet biar marker default gak error (meski kita gak pakai pin lagi)
+// Fix default icon leaflet
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
@@ -22,9 +21,14 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
+// ========================
+// AUTO DETECT HOSTNAME
+// ========================
+const WS_URL = `ws://${window.location.hostname}:8080`;
+
 const DEFAULT_CENTER = { lat: -2.5, lng: 118.0 };
-const FALL_WAVE_DURATION = 10000; // 10 detik radar
-const FALL_WAVE_EXTRA = 3500;     // buffer buat delay gelombang
+const FALL_WAVE_DURATION = 100000;
+const FALL_WAVE_EXTRA = 3500;
 
 function Home() {
   const [gpsData, setGpsData] = useState(null);
@@ -34,7 +38,7 @@ function Home() {
   const [fallEvents, setFallEvents] = useState([]);
   const lastFallIdRef = useRef(null);
 
-  useWebSocket("ws://localhost:8080", {
+  useWebSocket(WS_URL, {
     onOpen: () => setWsStatus("CONNECTED"),
     onClose: () => setWsStatus("DISCONNECTED"),
     onError: () => setWsStatus("ERROR"),
@@ -43,6 +47,7 @@ function Home() {
         const parsed = JSON.parse(event.data);
         setGpsData(parsed);
 
+        // Save last fix
         if (!parsed.error && parsed.latitude != null && parsed.longitude != null) {
           setLastFix({
             latitude: Number(parsed.latitude),
@@ -52,6 +57,7 @@ function Home() {
           });
         }
 
+        // Fall detection
         if (parsed.fall_detected) {
           const fid = parsed.fall_id ?? Date.now();
           if (fid === lastFallIdRef.current) return;
@@ -85,6 +91,7 @@ function Home() {
     shouldReconnect: () => true,
   });
 
+  // Cleanup expired fall waves
   useEffect(() => {
     const iv = setInterval(() => {
       const now = Date.now();
@@ -210,7 +217,7 @@ function Home() {
           </div>
         </aside>
 
-        {/* MAIN AREA */}
+        {/* MAP AREA */}
         <main className="mp-main">
           <div className="mp-toolbar">
             <div className="mp-toolbar-left">
@@ -234,7 +241,6 @@ function Home() {
             >
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-              {/* Pane radar di bawah */}
               <Pane name="fallPane" style={{ zIndex: 400 }}>
                 {fallEvents.map((ev) => (
                   <React.Fragment key={ev.id}>
@@ -250,7 +256,6 @@ function Home() {
                 ))}
               </Pane>
 
-              {/* Pane dot biru di atas radar */}
               <Pane name="livePane" style={{ zIndex: 650 }}>
                 {(hasFixNow || lastFix) && (
                   <CircleMarker
@@ -268,7 +273,6 @@ function Home() {
               </Pane>
             </MapContainer>
 
-            {/* HUD overlay */}
             <div className="mp-hud">
               <div className="mp-hud-card">
                 <div className="mp-hud-row">
@@ -283,6 +287,7 @@ function Home() {
                     {hasFixNow ? "FIX" : "NO FIX"}
                   </span>
                 </div>
+
                 <div className="mp-hud-grid">
                   <div>
                     <span className="mp-label">Sat</span>
