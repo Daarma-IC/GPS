@@ -25,6 +25,27 @@ L.Icon.Default.mergeOptions({
 const DEFAULT_CENTER = { lat: -2.5, lng: 118.0 };
 const FALL_WAVE_DURATION = 10000; // 10 detik radar
 const FALL_WAVE_EXTRA = 3500;     // buffer buat delay gelombang
+const BACKEND_URL = "http://localhost:3001";
+
+// Function untuk kirim notifikasi ke backend
+async function sendFallNotificationToBackend(fallData) {
+  try {
+    const response = await fetch(`${BACKEND_URL}/falls/notify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(fallData),
+    });
+    if (response.ok) {
+      console.log("✅ Notifikasi fall terkirim ke backend");
+    } else {
+      console.error("❌ Gagal kirim notifikasi:", response.status);
+    }
+  } catch (error) {
+    console.error("❌ Error kirim notifikasi:", error);
+  }
+}
 
 function Home() {
   const [gpsData, setGpsData] = useState(null);
@@ -76,6 +97,15 @@ function Home() {
               ...prev,
             ];
             return next.slice(0, 20);
+          });
+
+          // Kirim notifikasi ke backend (backend akan forward ke Telegram)
+          sendFallNotificationToBackend({
+            fall_id: fid,
+            fall_lat: fallLat,
+            fall_lng: fallLng,
+            fall_ts: parsed.fall_ts ?? Date.now(),
+            fall_strength: parsed.fall_strength ?? null,
           });
         }
       } catch (err) {

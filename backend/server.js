@@ -2,11 +2,20 @@
 const express = require("express");
 const WebSocket = require("ws");
 const os = require("os");
+const axios = require("axios");
+const cors = require("cors");
 
 const app = express();
 const PORT = 3001;
 
 app.use(express.json());
+app.use(cors());
+
+// ===== Telegram Bot Config =====
+const TELEGRAM_BOT_TOKEN = "8504372055:AAH8QnsObWHkxSLKJWYxD3LYpf9Wlh89lz4";
+const TELEGRAM_CHAT_ID = 1310552986; // INTEGER, bukan string
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+const WEB_URL = "http://192.168.1.22:3000"; // Ganti dengan IP LAN Anda (cek di log server)
 
 const wss = new WebSocket.Server({ port: 8080 });
 
@@ -28,6 +37,87 @@ let wsClientCount = 0;
 let lastEspDataAt = null;
 let lastPayload = null;
 let lastFallAt = null;
+let fallEvents = []; // Store all fall events with timestamps
+
+// ===== Function untuk kirim notifikasi ke Telegram =====
+async function sendTelegramNotification(fallData) {
+  try {
+    const fallId = fallData.fall_id || Date.now();
+    const lat = fallData.fall_lat || fallData.latitude || "?";
+    const lng = fallData.fall_lng || fallData.longitude || "?";
+    const fallLink = `${WEB_URL}/fall/${fallId}`;
+    const now = new Date();
+
+    const message = `
+🚨🚨🚨 KAKEK ANDA JATUH! 🚨🚨🚨
+
+⚠️ SITUASI DARURAT ⚠️
+Kakek terdeteksi jatuh dan membutuhkan bantuan segera!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📍 LOKASI JATUH:
+${lat}, ${lng}
+
+🕐 WAKTU KEJADIAN:
+${now.toLocaleString("id-ID")}
+
+💪 KEKUATAN IMPACT:
+${fallData.fall_strength ? `${fallData.fall_strength} (Moderate-Severe)` : "N/A"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+🆘 TINDAKAN CEPAT DIPERLUKAN 🆘
+
+👉 KLIK LINK INI UNTUK LIHAT LOKASI:
+${fallLink}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pesan dari Sistem Monitoring GPS
+🔔 Notifikasi dikirim otomatis
+    `.trim();
+
+    console.log(`📤 Sending to Telegram...`);
+    console.log(`   Chat ID: ${TELEGRAM_CHAT_ID} (type: ${typeof TELEGRAM_CHAT_ID})`);
+    console.log(`   Message length: ${message.length}`);
+
+    const response = await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: TELEGRAM_CHAT_ID,
+      text: message,
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🗺️ LIHAT LOKASI JATUH",
+              url: fallLink,
+            },
+          ],
+          [
+            {
+              text: "🚨 SEGERA HUBUNGI AMBULANS 112",
+              url: `https://wa.me/?text=Tolong! Orang tua saya jatuh di koordinat: ${lat}, ${lng}. Link: ${fallLink}`,
+            },
+          ],
+          [
+            {
+              text: "📲 HUBUNGI KELUARGA",
+              url: "https://t.me/share/url?url=Orang%20tua%20saya%20jatuh!%20Lokasi%20jatuh:%20" + encodeURIComponent(`${lat}, ${lng}`) + "&text=" + encodeURIComponent(fallLink),
+            },
+          ],
+        ],
+      },
+    });
+
+    console.log(`✅ Telegram notification sent for fall ID: ${fallId}`);
+    return response.data;
+  } catch (error) {
+    console.error("❌ Error sending Telegram notification:", error.message);
+    if (error.response) {
+      console.error("   Status:", error.response.status);
+      console.error("   Data:", JSON.stringify(error.response.data, null, 2));
+    }
+    return null;
+  }
+}
 
 // ===== broadcast ke semua client WS =====
 function broadcast(dataObj) {
@@ -73,6 +163,20 @@ app.post("/gps", (req, res) => {
   if (data.fall_detected) {
     lastFallAt = new Date();
     data.fall_active_until = Date.now() + 10_000; // 10 detik dari sekarang
+
+    // Store fall event dan kirim notifikasi Telegram
+    const fallEvent = {
+      id: data.fall_id || Date.now(),
+      timestamp: Date.now(),
+      latitude: data.fall_lat || data.latitude,
+      longitude: data.fall_lng || data.longitude,
+      strength: data.fall_strength || null,
+      data: data,
+    };
+    fallEvents.push(fallEvent);
+
+    // Kirim notifikasi ke Telegram
+    sendTelegramNotification(data);
   }
 
   lastPayload = data;
@@ -98,6 +202,47 @@ app.post("/gps", (req, res) => {
 
 app.get("/", (req, res) => {
   res.send("GPS backend running");
+});
+
+// ===== endpoint GET semua fall events =====
+app.get("/falls", (req, res) => {
+  res.json({
+    status: "ok",
+    count: fallEvents.length,
+    events: fallEvents,
+  });
+});
+
+// ===== endpoint GET detail fall event by ID =====
+app.get("/falls/:fallId", (req, res) => {
+  const { fallId } = req.params;
+  const fallEvent = fallEvents.find((e) => String(e.id) === String(fallId));
+
+  if (!fallEvent) {
+    return res.status(404).json({
+      status: "error",
+      message: "Fall event not found",
+    });
+  }
+
+  res.json({
+    status: "ok",
+    event: fallEvent,
+  });
+});
+
+// ===== endpoint POST untuk notify fall event dari frontend =====
+app.post("/falls/notify", async (req, res) => {
+  const fallData = req.body;
+
+  // Kirim ke Telegram
+  const result = await sendTelegramNotification(fallData);
+
+  res.json({
+    status: "ok",
+    message: "Fall notification sent",
+    telegram_sent: result ? true : false,
+  });
 });
 
 // ===== heartbeat status tiap 5 detik =====
