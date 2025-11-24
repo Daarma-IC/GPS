@@ -50,31 +50,31 @@ async function sendTelegramNotification(fallData) {
     const now = new Date();
 
     const message = `
-🚨🚨🚨 KAKEK ANDA JATUH! 🚨🚨🚨
+    🚨🚨🚨 KAKEK ANDA JATUH! 🚨🚨🚨
 
-⚠️ SITUASI DARURAT ⚠️
-Kakek terdeteksi jatuh dan membutuhkan bantuan segera!
+    ⚠️ SITUASI DARURAT ⚠️
+    Kakek terdeteksi jatuh dan membutuhkan bantuan segera!
 
-━━━━━━━━━━━━━━━━━━━━━━━━━
-📍 LOKASI JATUH:
-${lat}, ${lng}
+    ━━━━━━━━━━━━━━━━━━━━━━━━━
+    📍 LOKASI JATUH:
+    ${lat}, ${lng}
 
-🕐 WAKTU KEJADIAN:
-${now.toLocaleString("id-ID")}
+    🕐 WAKTU KEJADIAN:
+    ${now.toLocaleString("id-ID")}
 
-💪 KEKUATAN IMPACT:
-${fallData.fall_strength ? `${fallData.fall_strength} (Moderate-Severe)` : "N/A"}
+    💪 KEKUATAN IMPACT:
+    ${fallData.fall_strength ? `${fallData.fall_strength} (Moderate-Severe)` : "N/A"}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━
-🆘 TINDAKAN CEPAT DIPERLUKAN 🆘
+    ━━━━━━━━━━━━━━━━━━━━━━━━━
+    🆘 TINDAKAN CEPAT DIPERLUKAN 🆘
 
-👉 KLIK LINK INI UNTUK LIHAT LOKASI:
-${fallLink}
+    👉 KLIK LINK INI UNTUK LIHAT LOKASI:
+    ${fallLink}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━
+    ━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Pesan dari Sistem Monitoring GPS
-🔔 Notifikasi dikirim otomatis
+    Pesan dari Sistem Monitoring GPS
+    🔔 Notifikasi dikirim otomatis
     `.trim();
 
     console.log(`📤 Sending to Telegram...`);

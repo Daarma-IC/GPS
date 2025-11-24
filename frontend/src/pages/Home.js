@@ -1,6 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
 import useWebSocket from "react-use-websocket";
-
 import {
   MapContainer,
   TileLayer,
@@ -9,8 +8,6 @@ import {
   Pane,
 } from "react-leaflet";
 import L from "leaflet";
-
-// Fix default icon leaflet
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
