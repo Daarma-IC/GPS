@@ -1,11 +1,13 @@
 // src/pages/Home.js
 import React, { useRef, useState, useEffect } from "react";
 import useWebSocket from "react-use-websocket";
+import { BACKEND_URL, WEBSOCKET_URL, DEFAULT_CENTER, FALL_WAVE_DURATION, FALL_WAVE_EXTRA } from "../config";
 
 import {
   MapContainer,
   TileLayer,
   CircleMarker,
+  Marker,
   Popup,
   Pane,
 } from "react-leaflet";
@@ -22,10 +24,17 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
-const DEFAULT_CENTER = { lat: -2.5, lng: 118.0 };
-const FALL_WAVE_DURATION = 10000; // 10 detik radar
-const FALL_WAVE_EXTRA = 3500;     // buffer buat delay gelombang
-const BACKEND_URL = "http://localhost:3001";
+// Custom icon untuk live position
+const livePositionIcon = L.divIcon({
+  html: `<div style="
+    font-size: 18px;
+    filter: drop-shadow(0 0 3px rgba(34, 197, 94, 0.7));
+  ">📍</div>`,
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+  className: 'custom-icon-live',
+});
+
 
 // Function untuk kirim notifikasi ke backend
 async function sendFallNotificationToBackend(fallData) {
@@ -54,6 +63,44 @@ function Home() {
 
   const [fallEvents, setFallEvents] = useState([]);
   const lastFallIdRef = useRef(null);
+
+  // Demo function untuk trigger fall alert
+  const triggerDemoFall = () => {
+    // Buat koordinat random sekitar Jawa Barat (Bandung area)
+    const baseLat = -6.9;
+    const baseLng = 107.6;
+    const randomLat = baseLat + (Math.random() - 0.5) * 0.1;
+    const randomLng = baseLng + (Math.random() - 0.5) * 0.1;
+    const demoFallId = "DEMO_" + Date.now();
+
+    // Trigger fall event yang sama dengan data sebenarnya
+    const now = Date.now();
+    setFallEvents((prev) => {
+      const next = [
+        {
+          id: demoFallId,
+          lat: randomLat,
+          lng: randomLng,
+          ts: now,
+          strength: (Math.random() * 100 + 50).toFixed(1), // Strength 50-150
+          expiresAt: now + FALL_WAVE_DURATION + FALL_WAVE_EXTRA,
+        },
+        ...prev,
+      ];
+      return next.slice(0, 20);
+    });
+
+    // Kirim ke backend juga (untuk testing)
+    const demoData = {
+      fall_id: demoFallId,
+      fall_lat: randomLat,
+      fall_lng: randomLng,
+      fall_ts: now,
+      fall_strength: (Math.random() * 100 + 50).toFixed(1),
+    };
+    console.log("🎬 DEMO FALL TRIGGERED:", demoData);
+    sendFallNotificationToBackend(demoData);
+  };
 
   useWebSocket("ws://localhost:8080", {
     onOpen: () => setWsStatus("CONNECTED"),
@@ -280,21 +327,18 @@ function Home() {
                 ))}
               </Pane>
 
-              {/* Pane dot biru di atas radar */}
+              {/* Pane marker hijau di atas radar - always show */}
               <Pane name="livePane" style={{ zIndex: 650 }}>
-                {(hasFixNow || lastFix) && (
-                  <CircleMarker
-                    center={[center.lat, center.lng]}
-                    radius={7}
-                    pathOptions={{ className: "live-dot" }}
-                  >
-                    <Popup>
-                      Posisi sekarang <br />
-                      Lat: {currentLat} <br />
-                      Lng: {currentLng}
-                    </Popup>
-                  </CircleMarker>
-                )}
+                <Marker
+                  position={[center.lat, center.lng]}
+                  icon={livePositionIcon}
+                >
+                  <Popup>
+                    📍 Posisi sekarang <br />
+                    Lat: {currentLat} <br />
+                    Lng: {currentLng}
+                  </Popup>
+                </Marker>
               </Pane>
             </MapContainer>
 

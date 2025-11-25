@@ -13,9 +13,9 @@ app.use(cors());
 
 // ===== Telegram Bot Config =====
 const TELEGRAM_BOT_TOKEN = "8504372055:AAH8QnsObWHkxSLKJWYxD3LYpf9Wlh89lz4";
-const TELEGRAM_CHAT_ID = 1310552986; // INTEGER, bukan string
+const TELEGRAM_CHAT_ID = 1310552986; 
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
-const WEB_URL = "http://192.168.1.22:3000"; // Ganti dengan IP LAN Anda (cek di log server)
+const WEB_URL = "http://192.168.1.22:3000"; 
 
 const wss = new WebSocket.Server({ port: 8080 });
 
@@ -233,7 +233,24 @@ app.get("/falls/:fallId", (req, res) => {
 
 // ===== endpoint POST untuk notify fall event dari frontend =====
 app.post("/falls/notify", async (req, res) => {
+  console.log(`\n📥 POST /falls/notify received`);
+  console.log(`   Body:`, JSON.stringify(req.body, null, 2));
+
   const fallData = req.body;
+
+  // Store fall event ke database
+  const fallEvent = {
+    id: fallData.fall_id || Date.now(),
+    timestamp: fallData.fall_ts || Date.now(),
+    latitude: fallData.fall_lat,
+    longitude: fallData.fall_lng,
+    strength: fallData.fall_strength || null,
+    data: fallData,
+  };
+
+  console.log(`   Creating fallEvent:`, JSON.stringify(fallEvent, null, 2));
+  fallEvents.push(fallEvent);
+  console.log(`   ✅ Pushed to fallEvents. Total events: ${fallEvents.length}`);
 
   // Kirim ke Telegram
   const result = await sendTelegramNotification(fallData);
@@ -242,6 +259,7 @@ app.post("/falls/notify", async (req, res) => {
     status: "ok",
     message: "Fall notification sent",
     telegram_sent: result ? true : false,
+    fall_id: fallEvent.id,
   });
 });
 
