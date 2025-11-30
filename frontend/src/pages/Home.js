@@ -106,8 +106,8 @@ function Home() {
   const center = hasFixNow
     ? { lat: Number(gpsData.latitude), lng: Number(gpsData.longitude) }
     : lastFix
-    ? { lat: lastFix.latitude, lng: lastFix.longitude }
-    : DEFAULT_CENTER;
+      ? { lat: lastFix.latitude, lng: lastFix.longitude }
+      : DEFAULT_CENTER;
 
   const sats =
     (gpsData && gpsData.satellites) || (lastFix && lastFix.satellites) || 0;
@@ -130,14 +130,14 @@ function Home() {
   const currentLat = hasFixNow
     ? Number(gpsData.latitude).toFixed(6)
     : lastFix
-    ? lastFix.latitude.toFixed(6)
-    : "-";
+      ? lastFix.latitude.toFixed(6)
+      : "-";
 
   const currentLng = hasFixNow
     ? Number(gpsData.longitude).toFixed(6)
     : lastFix
-    ? lastFix.longitude.toFixed(6)
-    : "-";
+      ? lastFix.longitude.toFixed(6)
+      : "-";
 
   return (
     <div className="mp-root">
@@ -221,7 +221,7 @@ function Home() {
         <main className="mp-main">
           <div className="mp-toolbar">
             <div className="mp-toolbar-left">
-              <span className="mp-title">Data GPS dari Arduino</span>
+              <span className="mp-title">Data GPS</span>
               <span className="mp-subtitle">
                 {hasFixNow ? "Live Position" : "Waiting for Fix"}
               </span>
