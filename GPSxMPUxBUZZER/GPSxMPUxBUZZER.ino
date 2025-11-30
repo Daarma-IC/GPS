@@ -9,7 +9,7 @@
 // ================= WIFI =================
 const char* ssid       = "Kosan Pa Nendi lt2";
 const char* password   = "GBABlok05";
-const char* serverUrl  = "http://192.168.1.88:3001/gps";
+const char* serverUrl  = "https://nonaffinitive-cablelaid-kara.ngrok-free.dev/gps";
 
 // ================= FONNTE =================
 const char* FONNTE_TOKEN = "h2gbzah52g1PaioGUnDs";
@@ -73,6 +73,7 @@ unsigned long lastSend = 0;
 const unsigned long sendInterval = 1000;
 
 WiFiClient wifiClient;
+WiFiClientSecure secureClient;  // For HTTPS/ngrok connection
 
 // ================= SEND FONNTE =================
 void sendFonnteAlert() {
@@ -311,7 +312,8 @@ void loop() {
 
     if (WiFi.status() == WL_CONNECTED) {
       HTTPClient http;
-      http.begin(wifiClient, serverUrl);
+      secureClient.setInsecure();  // Skip certificate validation for ngrok
+      http.begin(secureClient, serverUrl);
       http.addHeader("Content-Type", "application/json");
       int httpCode = http.POST(payload);
       Serial.print("[HTTP ");
