@@ -88,12 +88,14 @@ function Home() {
     shouldReconnect: () => true,
   });
 
-  // Cleanup expired fall waves
+  // Cleanup expired fall waves - REMOVED to keep logs persistent
+  // We only want to stop the animation, not remove the log
   useEffect(() => {
     const iv = setInterval(() => {
       const now = Date.now();
-      setFallEvents((prev) => prev.filter((e) => e.expiresAt > now));
-    }, 500);
+      // Only force re-render for animation updates if needed, but don't filter out events
+      // setFallEvents((prev) => prev.map(e => ({...e, isAnimating: e.expiresAt > now}))); 
+    }, 1000);
     return () => clearInterval(iv);
   }, []);
 
@@ -144,7 +146,9 @@ function Home() {
           <h2 className="mp-sidebar-title">TELEMETRY</h2>
 
           <div className="mp-panel">
-            <div className="mp-panel-header">Connection</div>
+            <div className="mp-panel-header">
+              <span className="panel-icon">🔌</span> Connection
+            </div>
             <div className="mp-panel-body">
               <div className={`mp-badge mp-badge-${wsStatus.toLowerCase()}`}>
                 {wsStatus}
@@ -154,7 +158,9 @@ function Home() {
           </div>
 
           <div className="mp-panel">
-            <div className="mp-panel-header">GNSS Status</div>
+            <div className="mp-panel-header">
+              <span className="panel-icon">🛰️</span> GPS Status
+            </div>
             <div className="mp-panel-body mp-grid">
               <div>
                 <span className="mp-label">Satellites</span>
@@ -172,7 +178,9 @@ function Home() {
           </div>
 
           <div className="mp-panel">
-            <div className="mp-panel-header">Coordinates</div>
+            <div className="mp-panel-header">
+              <span className="panel-icon">📍</span> Coordinates
+            </div>
             <div className="mp-panel-body mp-grid">
               <div>
                 <span className="mp-label">Latitude</span>
@@ -186,7 +194,9 @@ function Home() {
           </div>
 
           <div className="mp-panel">
-            <div className="mp-panel-header">Last Update</div>
+            <div className="mp-panel-header">
+              <span className="panel-icon">⏱️</span> Last Update
+            </div>
             <div className="mp-panel-body">
               <div className="mp-status-text">
                 {lastFix?.timestamp ? lastFix.timestamp.toLocaleTimeString() : "-"}
@@ -195,21 +205,29 @@ function Home() {
           </div>
 
           <div className="mp-panel">
-            <div className="mp-panel-header">Fall Alerts</div>
+            <div className="mp-panel-header">
+              <span className="panel-icon">🚨</span> Fall Alerts
+            </div>
             <div className="mp-panel-body">
               {fallEvents.length === 0 && (
                 <div className="muted">Belum ada jatuh terdeteksi</div>
               )}
-              {fallEvents.map((ev) => (
-                <div key={ev.id} className="alert-item">
-                  🚨 JATUH TERDETEKSI
-                  <div className="small">
-                    {new Date(ev.ts).toLocaleTimeString()} <br />
-                    Lat: {ev.lat?.toFixed(6)} | Lng: {ev.lng?.toFixed(6)}
-                    {ev.strength && <> | Strength: {ev.strength}</>}
+              {fallEvents.map((ev) => {
+                const isRecent = Date.now() - ev.ts < 60000;
+                return (
+                  <div key={ev.id} className={`alert-item ${!isRecent ? 'alert-old' : ''}`}>
+                    <div className="alert-flex-container">
+                      <span>🚨 JATUH TERDETEKSI</span>
+                      {isRecent && <span className="mp-badge mp-badge-error alert-badge-new">BARU</span>}
+                    </div>
+                    <div className="small">
+                      {new Date(ev.ts).toLocaleTimeString()} <br />
+                      Lat: {ev.lat?.toFixed(6)} | Lng: {ev.lng?.toFixed(6)}
+                      {ev.strength && <> | Strength: {ev.strength}</>}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </aside>
@@ -234,26 +252,46 @@ function Home() {
             <MapContainer
               center={[center.lat, center.lng]}
               zoom={17}
-              style={{ width: "100%", height: "100%" }}
+              className="map-container-full"
             >
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-              <Pane name="fallPane" style={{ zIndex: 400 }}>
-                {fallEvents.map((ev) => (
-                  <React.Fragment key={ev.id}>
-                    {[0, 1, 2].map((i) => (
+              <Pane name="fallPane">
+                {fallEvents.map((ev) => {
+                  const isRecent = Date.now() - ev.ts < 60000; // 1 minute
+                  return (
+                    <React.Fragment key={ev.id}>
+                      {/* Pulsing animation only for recent events */}
+                      {isRecent && [0, 1, 2].map((i) => (
+                        <CircleMarker
+                          key={`${ev.id}-${i}`}
+                          center={[ev.lat, ev.lng]}
+                          radius={10}
+                          pathOptions={{ className: `pulse-circle pulse-delay-${i}` }}
+                        />
+                      ))}
+                      {/* Static marker for all events */}
                       <CircleMarker
-                        key={`${ev.id}-${i}`}
                         center={[ev.lat, ev.lng]}
-                        radius={10}
-                        pathOptions={{ className: `pulse-circle pulse-delay-${i}` }}
-                      />
-                    ))}
-                  </React.Fragment>
-                ))}
+                        radius={6}
+                        pathOptions={{
+                          color: '#ef4444',
+                          fillColor: '#ef4444',
+                          fillOpacity: 0.8,
+                          weight: 2
+                        }}
+                      >
+                        <Popup>
+                          <strong>JATUH TERDETEKSI</strong><br />
+                          {new Date(ev.ts).toLocaleTimeString()}
+                        </Popup>
+                      </CircleMarker>
+                    </React.Fragment>
+                  );
+                })}
               </Pane>
 
-              <Pane name="livePane" style={{ zIndex: 650 }}>
+              <Pane name="livePane">
                 {(hasFixNow || lastFix) && (
                   <CircleMarker
                     center={[center.lat, center.lng]}
@@ -273,7 +311,7 @@ function Home() {
             <div className="mp-hud">
               <div className="mp-hud-card">
                 <div className="mp-hud-row">
-                  <span className="mp-hud-title">GNSS</span>
+                  <span className="mp-hud-title">INFORMATION</span>
                   <span
                     className={
                       hasFixNow
