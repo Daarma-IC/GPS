@@ -4,7 +4,7 @@ function Footer() {
   return (
     <footer className="footer">
       <p className="footer-text">
-        © 2025 GPS Monitoring System
+        Kelompok Bu Nendi
       </p>
       <div className="footer-links">
         <a

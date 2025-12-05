@@ -25,14 +25,19 @@ services:
       dockerfile: Dockerfile
     container_name: gps-frontend
     ports:
-      - "3000:80" # Map container port 80 to host port 3000
+      - "3000:3000" # React dev server on port 3000
     networks:
       - gps-network
     depends_on:
       - backend
     restart: unless-stopped
+    environment:
+      - CHOKIDAR_USEPOLLING=true # Enable hot reload in Docker
+    volumes:
+      - ./frontend/src:/app/src # Mount source for hot reload
+      - ./frontend/public:/app/public
     healthcheck:
-      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/" ]
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/" ]
       interval: 30s
       timeout: 10s
       retries: 3

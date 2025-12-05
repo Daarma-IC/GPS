@@ -1,32 +1,18 @@
-# Frontend Dockerfile for GPS Fall Detection System
-# Stage 1: Build
-FROM node:18-alpine AS builder
+FROM node:18-alpine
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install all dependencies (including dev dependencies for build)
+# Install all dependencies
 RUN npm ci
 
 # Copy source code
 COPY . .
 
-# Build the React app
-RUN npm run build
+# Expose port 3000 (React dev server default)
+EXPOSE 3000
 
-# Stage 2: Production
-FROM nginx:alpine
-
-# Copy custom nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copy built app from builder stage
-COPY --from=builder /app/build /usr/share/nginx/html
-
-# Expose port 80
-EXPOSE 80
-
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Start the development server
+CMD ["npm", "start"]

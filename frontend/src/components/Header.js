@@ -5,7 +5,7 @@ function Header() {
     <header className="header">
       <div className="header-content">
         <h1 className="header-title">
-          GPS Tracking System
+          Sistem Pendeteksi Lansia Jatuh
         </h1>
       </div>
     </header>
