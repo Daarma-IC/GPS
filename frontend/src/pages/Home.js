@@ -362,7 +362,7 @@ function Home() {
                         <Popup>
                           <strong>🚨 JATUH TERDETEKSI</strong><br />
                           Waktu: {new Date(ev.ts).toLocaleTimeString()}<br />
-                          {ev.strength && `Kekuatan: ${ev.strength}g`}
+                          {/* {ev.strength && `Kekuatan: ${ev.strength}g`} */}
                         </Popup>
                       </CircleMarker>
                     </React.Fragment>

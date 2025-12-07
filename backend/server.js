@@ -14,7 +14,7 @@ app.use(cors());
 // ===== Telegram Bot Config =====
 const TELEGRAM_BOT_TOKEN = "8504372055:AAH8QnsObWHkxSLKJWYxD3LYpf9Wlh89lz4";
 const TELEGRAM_CHAT_ID = 1310552986; // INTEGER, bukan string
-// const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 const ip = getLocalIP();
 const WEB_URL = ip ? `http://${ip}:3000` : `http://localhost:3000`;
 
