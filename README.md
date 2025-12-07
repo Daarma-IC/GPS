@@ -615,7 +615,1060 @@ Note: Current code doesn't use threshold on confidence
 
 ---
 
-## 💻 CODE WALKTHROUGH: Line-by-Line Explanation
+## 💻 PENJELASAN KODE LENGKAP: Analisis Baris-per-Baris
+
+Bagian ini menjelaskan setiap baris kode dari file Arduino dengan detail, termasuk alasan teknis dan implementasi.
+
+---
+
+### Fungsi 1: `sendFonnteAlert()` - Kirim Notifikasi WhatsApp
+
+**Tujuan:** Mengirim pesan WhatsApp otomatis melalui API Fonnte ketika jatuh terdeteksi.
+
+```cpp
+void sendFonnteAlert() {
+```
+**Baris 90:** Deklarasi fungsi dengan return type `void` (tidak mengembalikan nilai)
+- Fungsi ini dipanggil dari `checkFall()` saat fall confirmed
+- Tidak butuh parameter karena semua data sudah global
+
+```cpp
+  if (WiFi.status() != WL_CONNECTED) return;
+```
+**Baris 91:** Pengecekan status koneksi WiFi
+- `WiFi.status()` = Fungsi dari library WiFi.h yang mengembalikan status koneksi
+- `WL_CONNECTED` = Konstanta dengan nilai 3 (dari enum wl_status_t)
+- `!= WL_CONNECTED` = Jika tidak terkoneksi
+- `return;` = Keluar dari fungsi (early exit pattern)
+- **Alasan:** Mencegah crash saat mencoba HTTP request tanpa WiFi
+
+**Kemungkinan Status WiFi:**
+```
+WL_IDLE_STATUS = 0     // WiFi sedang idle
+WL_NO_SSID_AVAIL = 1   // SSID tidak ditemukan
+WL_CONNECTED = 3       // Terkoneksi (yang kita cek)
+WL_CONNECT_FAILED = 4  // Koneksi gagal
+WL_DISCONNECTED = 6    // Terputus
+```
+
+```cpp
+  WiFiClientSecure secure;
+```
+**Baris 93:** Membuat objek client untuk koneksi HTTPS
+- `WiFiClientSecure` = Class dari library WiFiClientSecure.h
+- `secure` = Nama variabel objek (lokal dalam fungsi ini)
+- Objek ini menangani enkripsi SSL/TLS untuk HTTPS
+- **Perbedaan dengan WiFiClient biasa:** Punya layer enkripsi
+
+```cpp
+  secure.setInsecure();
+```
+**Baris 94:** Non-aktifkan validasi sertifikat SSL
+- `setInsecure()` = Method dari WiFiClientSecure
+- Efek: Client akan accept semua sertifikat tanpa validasi
+- **Kenapa perlu?** ESP32 tidak punya Certificate Authority (CA) store by default
+- **Risiko:** Man-in-the-middle attack possible (OK untuk prototype, tidak untuk production)
+- **Alternatif production:** Load root CA certificate ke SPIFFS dan gunakan `setCACert()`
+
+```cpp
+  HTTPClient http;
+```
+**Baris 96:** Membuat objek untuk HTTP request
+- `HTTPClient` = Class dari library HTTPClient.h
+- `http` = Nama variabel objek
+- Objek ini menangani semua aspek HTTP communication (headers, method, payload)
+
+```cpp
+  http.begin(secure, API_URL);
+```
+**Baris 97:** Inisialisasi HTTP connection
+- `begin()` = Method HTTPClient untuk setup connection
+- Parameter 1: `secure` = WiFiClientSecure object (koneksi HTTPS)
+- Parameter 2: `API_URL` = String global berisi URL lengkap dengan query parameters
+- **Yang terjadi:** Parsing URL, extract host/port/path, setup socket connection
+
+**Contoh API_URL:**
+```
+https://api.fonnte.com/send?token=xxx&target=628xxx&message=JATUH
+```
+
+```cpp
+  int code = http.GET();
+```
+**Baris 98:** Eksekusi HTTP GET request
+- `GET()` = Method untuk melakukan HTTP GET request
+- Return value: HTTP status code (int)
+  - 200-299: Success
+  - 400-499: Client error (bad request, unauthorized, dll)
+  - 500-599: Server error
+  - <0: Connection error
+- **Proses di balik:** Connect socket → Send HTTP headers → Wait response → Parse status code
+
+```cpp
+  Serial.print("[FONNTE HTTP ");
+  Serial.print(code);
+  Serial.println("]");
+```
+**Baris 99-101:** Logging status code ke Serial Monitor
+- `Serial.print()` = Print tanpa newline
+- `Serial.println()` = Print dengan newline di akhir
+- Output example: `[FONNTE HTTP 200]`
+- **Tujuan:** Debugging - verify API call success/failure
+
+```cpp
+  http.end();
+```
+**Baris 102:** Menutup koneksi HTTP dan free memory
+- `end()` = Method untuk cleanup resources
+- **Yang di-cleanup:** Close socket, free buffers, reset internal state
+- **CRITICAL:** Tanpa ini, memory leak! ESP32 hanya bisa handle 4-5 koneksi simultan
+- Good practice: Always call `end()` setelah selesai
+
+```cpp
+}
+```
+**Baris 103:** Penutup fungsi
+- Stack frame di-destroy, lokal variables (`secure`, `http`) otomatis di-deallocate
+
+---
+
+### Fungsi 2: `startBuzzerAlarm()` - Aktivasi Alarm Buzzer
+
+**Tujuan:** Trigger alarm buzzer (entry point untuk state machine buzzer).
+
+```cpp
+void startBuzzerAlarm() {
+```
+**Baris 106:** Deklarasi fungsi void (no return value)
+
+```cpp
+  buzzerActive = true;
+```
+**Baris 107:** Set flag buzzer aktif
+- `buzzerActive` = Boolean global variable
+- Set `true` = Beritahu `handleBuzzer()` bahwa buzzer harus bunyi
+- **State transition:** IDLE → ACTIVE
+
+```cpp
+  buzzerStartMs = millis();
+```
+**Baris 108:** Catat timestamp mulai buzzer
+- `millis()` = Fungsi Arduino yang return jumlah milliseconds sejak boot
+- Type: `unsigned long` (32-bit, max 4,294,967,295 ms ≈ 49.7 hari)
+- `buzzerStartMs` = Global variable untuk tracking
+- **Kenapa perlu?** Untuk hitung berapa lama buzzer sudah bunyi (duration check)
+
+```cpp
+}
+```
+**Baris 109:** Penutup fungsi
+
+**Mengapa Fungsi Terpisah?**
+- Separation of concerns: Trigger vs Handling
+- Bisa restart buzzer mid-alarm (call `startBuzzerAlarm()` lagi)
+- Kode lebih modular dan testable
+
+---
+
+### Fungsi 3: `handleBuzzer()` - Kontrol Non-Blocking Buzzer
+
+**Tujuan:** Mengendalikan buzzer dengan pola beep ON/OFF tanpa blocking main loop.
+
+```cpp
+void handleBuzzer() {
+```
+**Baris 111:** Deklarasi fungsi
+- Dipanggil setiap iterasi `loop()` (potentially 10,000+ kali per detik)
+
+```cpp
+  if (!buzzerActive) return;
+```
+**Baris 112:** Guard clause - early exit
+- `!buzzerActive` = Jika buzzer tidak aktif
+- `return;` = Keluar langsung tanpa eksekusi kode di bawah
+- **Optimasi:** Prevent unnecessary computation saat buzzer off
+- **Pattern:** Guard clause untuk performance
+
+```cpp
+  unsigned long now = millis();
+```
+**Baris 114:** Ambil timestamp sekarang
+- `now` = Lokal variable (hanya exist dalam fungsi ini)
+- `unsigned long` = Type 32-bit unsigned integer
+- **Kenapa lokal?** Nilai hanya dipakai dalam fungsi ini
+
+```cpp
+  unsigned long elapsed = now - buzzerStartMs;
+```
+**Baris 115:** Hitung waktu elapsed
+- `elapsed` = Selisih waktu sejak buzzer start
+- Arithmetic: `now - buzzerStartMs`
+- **Contoh:** `now=10500, start=10000 → elapsed=500ms`
+- **Rollover safe:** Unsigned arithmetic handles rollover correctly
+
+**Penjelasan Rollover Safety:**
+```
+Scenario: millis() rollover setelah 49.7 hari
+start = 4294967000 (hampir max)
+now   = 500 (sudah rollover ke 0 lalu naik)
+elapsed = 500 - 4294967000 = ? 
+
+Dalam unsigned arithmetic:
+500 - 4294967000 = 1500 (correct!)
+Karena: (2^32 - 4294967000) + 500 = 1500
+```
+
+```cpp
+  if (elapsed >= BUZZER_DURATION) {
+```
+**Baris 117:** Cek apakah buzzer sudah timeout
+- `BUZZER_DURATION` = Konstanta global = 18000 (18 detik)
+- `>=` = Greater than or equal
+- Kondisi TRUE jika buzzer sudah bunyi ≥ 18 detik
+
+```cpp
+    noTone(BUZZER_PIN);
+```
+**Baris 118:** Matikan buzzer
+- `noTone()` = Fungsi Arduino untuk stop PWM signal
+- `BUZZER_PIN` = Pin GPIO 25
+- **Yang terjadi:** Stop timer/PWM peripheral, set pin LOW
+
+```cpp
+    buzzerActive = false;
+```
+**Baris 119:** Reset flag state
+- Set `false` = Buzzer sekarang inactive
+- **State transition:** ACTIVE → IDLE
+- Next iteration `handleBuzzer()` akan `return` di line 112
+
+```cpp
+    return;
+```
+**Baris 120:** Keluar dari fungsi
+- Tidak execute kode beep pattern di bawah
+- **Alasan:** Buzzer sudah stop, tidak perlu toggle ON/OFF
+
+```cpp
+  }
+```
+**Baris 121:** Penutup blok if timeout
+
+```cpp
+  unsigned long phase = elapsed % BEEP_PERIOD;
+```
+**Baris 124:** Hitung posisi dalam siklus beep
+- `BEEP_PERIOD` = 300ms (konstanta global)
+- `%` = Modulo operator (sisa pembagian)
+- `phase` = Nilai 0-299 yang loop terus
+- **Matematika:**
+  ```
+  elapsed=0    → phase=0    (cycle start)
+  elapsed=150  → phase=150
+  elapsed=300  → phase=0    (new cycle)
+  elapsed=450  → phase=150
+  elapsed=600  → phase=0    (new cycle)
+  ```
+
+**Visualisasi Modulo:**
+```
+Timeline (ms):  0----300----600----900
+elapsed:        [==============...]
+phase:          [0→299][0→299][0→299]
+                 cycle1  cycle2  cycle3
+```
+
+```cpp
+  if (phase < (BEEP_PERIOD / 2)) {
+```
+**Baris 125:** Cek apakah di first half of cycle
+- `BEEP_PERIOD / 2` = 300/2 = 150ms
+- `phase < 150` = TRUE untuk 0-149ms
+- **Logic:** First half = ON, second half = OFF
+
+```cpp
+    tone(BUZZER_PIN, BUZZER_FREQ);
+```
+**Baris 126:** Aktifkan buzzer dengan frekuensi tertentu
+- `tone()` = Fungsi Arduino untuk generate PWM square wave
+- Parameter 1: `BUZZER_PIN` = GPIO 25
+- Parameter 2: `BUZZER_FREQ` = 2000 Hz (2 kHz)
+- **Hardware:** Timer peripheral generate 2kHz PWM signal
+
+**Kenapa 2000 Hz?**
+```
+Human hearing sensitivity peak: 2-4 kHz
+2000 Hz = sweet spot (loud, clear, not painful)
+Below 500 Hz = too low (bass-like, kurang nyaring)
+Above 5000 Hz = too high (piercing, uncomfortable)
+```
+
+```cpp
+  } else {
+```
+**Baris 127:** Else block (phase 150-299ms)
+
+```cpp
+    noTone(BUZZER_PIN);
+```
+**Baris 128:** Matikan buzzer
+- Second half of cycle = OFF
+- Creates beep pattern: BEEP-silence-BEEP-silence
+
+```cpp
+  }
+}
+```
+**Baris 129-130:** Penutup blok else dan fungsi
+
+**Summary Beep Pattern:**
+```
+Time:    0ms  150ms 300ms 450ms 600ms
+Phase:   [0→149][150→299][0→149][150→299]
+State:   [ ON  ][ OFF   ][ ON  ][ OFF   ]
+Sound:   BEEP___silence__BEEP___silence__
+```
+
+---
+
+### Fungsi 4: `checkFall()` - Algoritma Deteksi Jatuh Utama
+
+**Tujuan:** Membaca sensor IMU, analisa data, detect dan confirm fall events.
+
+#### Bagian A: Setup dan Safety Check
+
+```cpp
+void checkFall() {
+```
+**Baris 133:** Deklarasi fungsi void
+- Fungsi terpanjang dan ter-kompleks dalam kode ini
+- Dipanggil setiap iterasi `loop()`
+
+```cpp
+  if (!imuOk) return;
+```
+**Baris 134:** Guard clause - safety check
+- `imuOk` = Boolean global, set saat `setup()`
+- `!imuOk` = TRUE jika IMU initialization failed
+- `return;` = Skip detection jika sensor mati
+- **Alasan:** Prevent reading garbage data dari sensor yang tidak ada
+
+#### Bagian B: Pembacaan Data Sensor
+
+```cpp
+  sensors_event_t a, g, temp;
+```
+**Baris 136:** Deklarasi struct untuk menyimpan sensor data
+- `sensors_event_t` = Type dari Adafruit_Sensor.h (unified sensor interface)
+- `a` = Accelerometer event
+- `g` = Gyroscope event
+- `temp` = Temperature event (tidak dipakai)
+- **Struct members:** `timestamp`, `sensor_id`, `type`, `acceleration`, `gyro`, dll
+
+```cpp
+  mpu.getEvent(&a, &g, &temp);
+```
+**Baris 137:** Baca semua sensor sekaligus dalam satu I2C transaction
+- `mpu` = Objek Adafruit_MPU6050 (global)
+- `getEvent()` = Method untuk read sensor registers
+- `&a, &g, &temp` = Pass by reference (efficient - modify struct langsung)
+- **I2C komunikasi:**
+  1. Send register address 0x3B (ACCEL_XOUT_H)
+  2. Read 14 bytes burst (accel XYZ + temp + gyro XYZ)
+  3. Parse bytes menjadi struct values
+
+**Detail Struct Setelah getEvent():**
+```cpp
+a.acceleration.x = nilai dalam m/s² (float)
+a.acceleration.y = nilai dalam m/s²
+a.acceleration.z = nilai dalam m/s²
+g.gyro.x = nilai dalam rad/s (float)
+g.gyro.y = nilai dalam rad/s
+g.gyro.z = nilai dalam rad/s
+```
+
+#### Bagian C: Konversi Data Accelerometer
+
+```cpp
+  ax_g = a.acceleration.x / 9.81;
+```
+**Baris 140:** Konversi sumbu X dari m/s² ke g-force
+- `a.acceleration.x` = Raw value dalam m/s² (SI units)
+- `9.81` = Konstanta gravitasi bumi (m/s²)
+- `/ 9.81` = Pembagian untuk normalisasi
+- `ax_g` = Global variable (float)
+- **Hasil:** Nilai dalam satuan g (1.0 = gravitasi normal)
+
+**Contoh Perhitungan:**
+```
+Raw value: 9.81 m/s² (objek diam)
+Konversi: 9.81 / 9.81 = 1.0g ✓
+
+Raw value: 19.62 m/s² (accelerasi 2x gravitasi)
+Konversi: 19.62 / 9.81 = 2.0g ✓
+
+Raw value: 0 m/s² (free fall) 
+Konversi: 0 / 9.81 = 0.0g ✓
+```
+
+```cpp
+  ay_g = a.acceleration.y / 9.81;
+  az_g = a.acceleration.z / 9.81;
+```
+**Baris 141-142:** Konversi sumbu Y dan Z
+- Proses sama dengan sumbu X
+- Semua axes di-normalize ke satuan g
+
+**Kenapa Butuh 3 Axis?**
+```
+Sensor bisa dipasang dengan orientasi apapun:
+- Tegak: Z=1.0g, X=0, Y=0
+- Miring 45°: X=0.7g, Z=0.7g
+- Horizontal: X=1.0g, Z=0
+
+Dengan 3 axis, kita bisa hitung magnitude total
+yang orientation-independent.
+```
+
+```cpp
+  accTotal = sqrt(ax_g*ax_g + ay_g*ay_g + az_g*az_g);
+```
+**Baris 143:** Hitung magnitude vektor 3D menggunakan Pythagoras
+- `sqrt()` = Fungsi square root dari math.h
+- `ax_g*ax_g` = Kuadrat komponen X (lebih cepat dari `pow(ax_g, 2)`)
+- `+` = Penjumlahan ketiga komponen kuadrat
+- `accTotal` = Magnitude total (global float)
+
+**Derivasi Formula:**
+```
+Vektor 3D: a⃗ = (ax, ay, az)
+
+Magnitude:
+|a⃗| = √(ax² + ay² + az²)
+
+Proof dari Pythagoras 2D:
+- 2D: |a⃗| = √(ax² + ay²)
+- Ekstend ke 3D:
+  d_xy = √(ax² + ay²)
+  |a⃗| = √(d_xy² + az²)
+  |a⃗| = √(ax² + ay² + az²) ✓
+```
+
+**Contoh Numerik:**
+```
+Scenario 1: Diam tegak
+ax=0, ay=0, az=1.0
+|a⃗| = √(0² + 0² + 1.0²) = 1.0g ✓
+
+Scenario 2: Diam miring 45°
+ax=0.707, ay=0, az=0.707
+|a⃗| = √(0.707² + 0² + 0.707²)
+    = √(0.5 + 0 + 0.5)
+    = √1.0 = 1.0g ✓
+
+Scenario 3: Free fall
+ax=0, ay=0, az=0
+|a⃗| = √(0² + 0² + 0²) = 0.0g ✓
+```
+
+#### Bagian D: Konversi Data Gyroscope
+
+```cpp
+  gx_dps = abs(g.gyro.x * 180.0 / PI);
+```
+**Baris 146:** Konversi sumbu X gyro dari rad/s ke deg/s
+- `g.gyro.x` = Raw angular velocity dalam radians/second
+- `* 180.0 / PI` = Konversi factor rad→deg
+- `abs()` = Ambil nilai absolut (arah tidak penting, hanya magnitude)
+- `gx_dps` = Global float variable (degrees per second)
+
+**Derivasi Konversi Unit:**
+```
+1 putaran penuh = 2π radians = 360 degrees
+
+Konversi rad→deg:
+degrees = radians × (360°/2π)
+        = radians × (180°/π)
+        = radians × 57.2958°
+
+Nilai PI ≈ 3.14159
+180/π ≈ 57.2958
+```
+
+**Contoh Perhitungan:**
+```
+Raw: 0.873 rad/s
+Konvert: 0.873 × 57.2958 = 50.0 deg/s ✓
+
+Raw: 1.745 rad/s  
+Convert: 1.745 × 57.2958 = 100.0 deg/s ✓
+
+Raw: -0.873 rad/s (rotasi berlawanan)
+abs(-0.873) × 57.2958 = 50.0 deg/s ✓
+```
+
+**Kenapa abs()?**
+```
+Kita hanya peduli berapa CEPAT rotasi,
+tidak peduli arah (CW/CCW).
+
+Example: Tongkat jatuh bisa rotasi ke kiri atau kanan,
+kedua arah indicate fall.
+```
+
+```cpp
+  gy_dps = abs(g.gyro.y * 180.0 / PI);
+  gz_dps = abs(g.gyro.z * 180.0 / PI);
+```
+**Baris 147-148:** Konversi axes Y dan Z
+- Proses identik dengan axis X
+- **3 axes:** Roll (X), Pitch (Y), Yaw (Z)
+
+```cpp
+  gyroTotal = sqrt(gx_dps*gx_dps + gy_dps*gy_dps + gz_dps*gz_dps);
+```
+**Baris 149:** Hitung magnitude rotasi total
+- Formula sama dengan accelerometer (Pythagoras 3D)
+- `gyroTotal` = Combined rotation speed dari semua axes
+- **Units:** degrees per second
+
+**Contoh:**
+```
+Rotasi hanya di X-axis:
+gx=100°/s, gy=0, gz=0
+Total = √(100² + 0² + 0²) = 100°/s ✓
+
+Rotasi diagonal:
+gx=50°/s, gy=50°/s, gz=0
+Total = √(50² + 50² + 0²) 
+      = √(2500 + 2500)
+      = √5000 = 70.7°/s ✓
+
+Tumbling kompleks:
+gx=40, gy=30, gz=20
+Total = √(40² + 30² + 20²)
+      = √(1600 + 900 + 400)
+      = √2900 = 53.9°/s ✓
+```
+
+#### Bagian E: Debug Output dengan Throttling
+
+```cpp
+  unsigned long now = millis();
+```
+**Baris 151:** Ambil timestamp untuk throttling
+- Digunakan untuk membatasi frequency debug print
+
+```cpp
+  static unsigned long lastDebug = 0;
+```
+**Baris 154:** Variable static untuk menyimpan timestamp last debug print
+- `static` = Nilai retained antar function calls (tidak reset tiap kali)
+- Inisialisasi = 0 (hanya sekali saat program start)
+- **Behavior:**
+  ```
+  Call 1: lastDebug = 0 (initialized)
+  Call 2: lastDebug = 1000 (value from previous call)
+  Call 3: lastDebug = 2000 (value from previous call)
+  ```
+
+```cpp
+  if (now - lastDebug > 1000) {
+```
+**Baris 155:** Cek apakah sudah 1 detik sejak last debug print
+- `now - lastDebug` = Elapsed time
+- `> 1000` = Lebih dari 1000ms (1 second)
+- Kondisi TRUE: Execute debug print block
+
+```cpp
+    lastDebug = now;
+```
+**Baris 156:** Update timestamp untuk next comparison
+- Set lastDebug ke timestamp sekarang
+- Next iteration akan compare dengan  nilai ini
+
+```cpp
+    Serial.print("📊 ACC: ");
+    Serial.print(accTotal, 2);
+```
+**Baris 157-158:** Print acceleration magnitude
+- `Serial.print()` = Print tanpa newline
+- `accTotal` = Nilai yang di-print
+- `, 2` = Format 2 decimal places
+- Output: `📊 ACC: 1.01`
+
+```cpp
+    Serial.print("g | GYRO: ");
+    Serial.print(gyroTotal, 0);
+    Serial.print("°/s | Thresholds: acc<");
+    Serial.print(FALL_THR_LOW);
+    Serial.print("g OR gyro>");
+    Serial.print(GYRO_ROTATION_THR);
+    Serial.print("°/s, impact>");
+    Serial.print(IMPACT_THR);
+    Serial.print("g");
+```
+**Baris 159-167:** Print info monitoring
+- Print gyro total, thresholds
+- `, 0` = 0 decimal places untuk gyro
+- Output lengkap:
+  ```
+  📊 ACC: 1.01g | GYRO: 35°/s | Thresholds: acc<0.98g OR gyro>50°/s, impact>1.05g
+  ```
+
+```cpp
+    if (inFreeFall) {
+      Serial.print(" | ⚠️ TONGKAT JATUH! Waiting for impact...");
+    }
+```
+**Baris 168-170:** Conditional message saat dalam detection mode
+- `inFreeFall` = Boolean flag
+- Tambahan output jika sedang dalam detection window
+
+```cpp
+    Serial.println();
+```
+**Baris 171:** Print newline
+- Complete debug line
+
+```cpp
+  }
+```
+**Baris 172:** Penutup blok if throttling
+
+**Kenapa Throttling 1 Second?**
+```
+Tanpa throttling:
+- loop() run ~10,000x per second
+- Serial.print() each call ~1ms
+- Total time: 10 seconds of printing per second!
+- Result: Loop blocked, system hang
+
+Dengan throttling 1 second:
+- Print hanya 1x per second
+- Negligible impact on loop performance
+- Still readable debugging info
+```
+
+#### Bagian F: Cooldown Check
+
+```cpp
+  if (now - lastFallAt < fallCooldown) return;
+```
+**Baris 174:** Prevent re-trigger dalam cooldown period
+- `lastFallAt` = Timestamp saat last fall detected (global)
+- `fallCooldown` = 2000ms (konstanta global)
+- `now - lastFallAt` = Time since last fall
+- `< 2000` = Jika belum 2 detik
+- `return;` = Skip detection check
+
+**Alasan Cooldown:**
+```
+Scenario tanpa cooldown:
+t=0ms: Fall detected → Alert sent
+t=50ms: Masih bouncing → Fall detected lagi → Alert sent lagi
+t=100ms: Still bouncing → Alert sent lagi
+Result: 20+ alerts untuk single fall!
+
+Dengan cooldown 2s:
+t=0ms: Fall detected → Alert sent → lastFallAt=0
+t=50ms: Cooldown active (50 < 2000) → Skip
+t=100ms: Cooldown active → Skip
+...
+t=2001ms: Cooldown expired → Ready for next detection
+Result: 1 alert per fall ✓
+```
+
+#### Bagian G: Trigger Detection Logic
+
+```cpp
+  if (!inFreeFall && (accTotal < FALL_THR_LOW || gyroTotal > GYRO_ROTATION_THR)) {
+```
+**Baris 177:** Kondisi multi-part untuk trigger detection
+
+**Part 1: `!inFreeFall`**
+- Pastikan tidak sudah dalam detection mode
+- Prevent re-entry ke detection window
+
+**Part 2a: `accTotal < FALL_THR_LOW`**
+- `FALL_THR_LOW` = 0.98g
+- Kondisi: Percepatan total turun dibawah threshold
+- Indikasi: Possible free fall (gravitasi menghilang)
+
+**Part 2b: `gyroTotal > GYRO_ROTATION_THR`**
+- `GYRO_ROTATION_THR` = 50°/s
+- Kondisi: Rotasi cepat terdeteksi
+- Indikasi: Tumbling/tipping over
+
+**Operator OR (`||`):**
+```
+TRUE jika SALAH SATU kondisi TRUE:
+- A=TRUE,  B=FALSE → OR = TRUE
+- A=FALSE, B=TRUE  → OR = TRUE  
+- A=TRUE,  B=TRUE  → OR = TRUE
+- A=FALSE, B=FALSE → OR = FALSE
+```
+
+**Kenapa OR bukan AND?**
+```
+Scenario A: Straight vertical drop
+- accTotal < 0.98g → TRUE (free fall)
+- gyroTotal might be low (minimal rotation)
+- With AND: Might miss detection!
+- With OR: Detected! ✓
+
+Scenario B: Tongkat tipping over (fall from upright)
+- accTotal might be ~1.0g initially
+- gyroTotal > 50°/s → TRUE (rapid rotation)
+- With AND: Might miss detection!
+- With OR: Detected! ✓
+
+Scenario C: Clear tumbling fall  
+- accTotal < 0.98g → TRUE
+- gyroTotal > 50°/s → TRUE
+- With AND: Detected ✓
+- With OR: Detected ✓
+```
+
+**Decision Table:**
+```
+| accTotal | gyroTotal | AND | OR  | Real Fall? |
+|----------|-----------|-----|-----|------------|
+| 0.5g     | 20°/s     | NO  | YES | Maybe      |
+| 1.0g     | 100°/s    | NO  | YES | YES!       |
+| 0.3g     | 150°/s    | YES | YES | YES!       |
+| 1.0g     | 10°/s     | NO  | NO  | NO         |
+
+OR catches more scenarios (higher sensitivity)
+```
+
+```cpp
+    inFreeFall = true;
+```
+**Baris 178:** Masuk ke detection mode
+- Set flag TRUE
+- **State transition:** IDLE → DETECTION
+
+```cpp
+    freeFallStart = now;
+```
+**Baris 179:** Catat timestamp trigger
+- Save waktu untuk calculate elapsed
+- Digunakan untuk auto-confirm timeout check
+
+```cpp
+    rotationDetected = (gyroTotal > GYRO_ROTATION_THR);
+```
+**Baris 180:** Flag jenis trigger
+- TRUE jika trigger dari rotation
+- FALSE jika trigger dari low acceleration
+- Disimpan untuk debugging/logging purposes
+
+```cpp
+    Serial.println();
+    if (rotationDetected) {
+      Serial.print("🔄 ROTASI! gyro=");
+      Serial.print(gyroTotal, 0);
+      Serial.println("°/s");
+    } else {
+      Serial.print("⬇️ GERAKAN! acc=");
+      Serial.print(accTotal, 2);
+      Serial.println("g");
+    }
+```
+**Baris 182-191:** Debug output based on trigger type
+- Print emoji dan nilai yang trigger
+- Help debugging: Know WHY detection triggered
+
+```cpp
+  }
+```
+**Baris 192:** Penutup blok trigger detection
+
+#### Bagian H: Confirmation Window Logic
+
+```cpp
+  if (inFreeFall) {
+```
+**Baris 194:** Execute hanya jika dalam detection mode
+- Blok ini dijalankan setiap loop iteration SETELAH trigger
+
+```cpp
+    unsigned long elapsed = now - freeFall
+
+Start;
+```
+**Baris 198:** Hitung waktu dalam free fall
+- `elapsed` = Duration sejak trigger
+- Updated setiap loop iteration
+
+**Example Timeline:**
+```
+t=0ms: Trigger → freeFallStart=0, elapsed=0
+t=50ms: elapsed = 50 - 0 = 50ms
+t=100ms: elapsed = 100 - 0 = 100ms
+t=500ms: elapsed = 500ms
+```
+
+```cpp
+    bool hasImpact = (accTotal > IMPACT_THR);
+```
+**Baris 204:** Check Strategy A - Impact Detection
+- `IMPACT_THR` = 1.05g
+- `hasImpact` = TRUE jika ada acceleration spike
+- Indikasi: Objek hit lantai
+
+**Fisika Impact:**
+```
+Saat hit ground:
+- Normal force dari lantai push back
+- accTotal spike > 1.0g
+- Magnitude depend on impact velocity
+
+Contoh:
+- Soft landing: 1.1g
+- Normal fall: 1.5-2.0g
+- Hard fall: 2.5g+
+```
+
+```cpp
+    bool autoConfirm = (elapsed > 500);
+```
+**Baris 205:** Check Strategy B - Auto-Confirmation
+- `500` = 500 milliseconds
+- `autoConfirm` = TRUE jika sudah >500ms dalam free fall
+- Assumption: Sustained state change = real fall
+
+**Reasoning:**
+```
+False movements (vibrations, quick jerks):
+- Duration: <100ms typically
+- Auto-confirm won't trigger
+
+Real orientation change (fall):
+- Duration: >500ms sustained
+- Auto-confirm triggers ✓
+
+Low-height fall (1cm):
+- Impact might be too small to detect
+- But orientation change lasts >500ms
+- Auto-confirm catches it! ✓
+```
+
+```cpp
+    if ((hasImpact || autoConfirm) && elapsed < IMPACT_WINDOW) {
+```
+**Baris 207:** Dual-strategy confirmation dengan window check
+
+**Part 1: `(hasImpact || autoConfirm)`**
+- At least ONE strategy confirms
+- Flexible detection
+
+**Part 2: `&& elapsed < IMPACT_WINDOW`**
+- `IMPACT_WINDOW` = 3000ms
+- Must confirm within 3 seconds
+- Prevent stale confirmations
+
+**Logic Table:**
+```
+| Impact | AutoCfm | Within3s | Result  |
+|--------|---------|----------|---------|
+| YES    | NO      | YES      | CONFIRM |
+| NO     | YES     | YES      | CONFIRM |
+| YES    | YES     | YES      | CONFIRM |
+| YES    | NO      | NO       | REJECT  |
+| NO     | NO      | YES      | WAIT    |
+```
+
+```cpp
+      fallDetected = true;
+```
+**Baris 208:** Set flag fall confirmed
+- Main loop akan read flag ini
+- Trigger alert & telemetry
+
+```cpp
+      fallStrength = accTotal;
+```
+**Baris 209:** Record acceleration magnitude saat confirm
+- Saved untuk confidence score calculation
+- Telemetry data
+
+```cpp
+      freefallMs = elapsed;
+```
+**Baris 210:** Record duration of free fall
+- Juga dipakai untuk confidence score
+- Debugging metric
+
+```cpp
+      fallConfidence = (freefallMs / 800.0) * (fallStrength / 2.0);
+      if (fallConfidence > 1.0) fallConfidence = 1.0;
+```
+**Baris 212-213:** Calculate confidence score (0.0-1.0)
+
+**Formula Breakdown:**
+```
+confidence = (duration_factor) × (strength_factor)
+
+Duration Factor:
+freefallMs / 800.0
+- 800ms = reference "typical" fall
+- Longer fall → Higher confidence
+
+Strength Factor:
+fallStrength / 2.0
+- 2.0g = reference "significant" impact
+- Stronger impact → Higher confidence
+
+Clamping:
+if > 1.0 → cap at 1.0
+```
+
+**Example Calculations:**
+```
+Case 1: Quick drop
+freefallMs=300, fallStrength=1.2g
+confidence = (300/800) × (1.2/2.0)
+           = 0.375 × 0.6
+           = 0.225 (22.5%) → LOW
+
+Case 2: Clear fall
+freefallMs=700, fallStrength=2.5g
+confidence = (700/800) × (2.5/2.0)
+           = 0.875 × 1.25
+           = 1.094 → clamped to 1.0 (100%) → HIGH
+
+Case 3: Gentle descent
+freefallMs=1000, fallStrength=1.0g
+confidence = (1000/800) × (1.0/2.0)
+           = 1.25 × 0.5
+           = 0.625 → clamped to 1.0
+           = 1.0 (100%) → HIGH (long duration)
+```
+
+```cpp
+      fallId++;
+```
+**Baris 215:** Increment fall event counter
+- `fallId` = Global uint32_t
+- Unique ID untuk setiap fall event
+- Increment dari 0 → 1 → 2 → ...
+
+```cpp
+      lastFallAt = now;
+```
+**Baris 216:** Update timestamp untuk cooldown
+- Set ke waktu sekarang
+- Activate cooldown period
+
+```cpp
+      inFreeFall = false;
+```
+**Baris 217:** Exit detection mode
+- Reset flag
+- **State transition:** DETECTION → IDLE
+- Ready untuk next detection (after cooldown)
+
+```cpp
+      Serial.println();
+      Serial.println("🚨🚨🚨 TONGKAT JATUH! 🚨🚨🚨");
+      Serial.print("  Trigger: ");
+      Serial.println(hasImpact ? "Impact" : "Auto (orientasi berubah)");
+      Serial.print("  Strength: ");
+      Serial.print(fallStrength, 2);
+      Serial.println("g");
+      Serial.print("  Duration: ");
+      Serial.print(freefallMs);
+      Serial.println("ms");
+      Serial.print("  Rotasi: ");
+      Serial.println(rotationDetected ? "YES" : "NO");
+      Serial.println("🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨");
+      Serial.println();
+```
+**Baris 219-232:** Detailed fall event logging
+- Print semua metrics
+- Ternary operators untuk conditional strings:
+  - `hasImpact ? "Impact" : "Auto"` = If hasImpact TRUE print "Impact", else "Auto"
+  - `rotationDetected ? "YES" : "NO"`
+
+**Example Output:**
+```
+🚨🚨🚨 TONGKAT JATUH! 🚨🚨🚨
+  Trigger: Impact
+  Strength: 2.15g
+  Duration: 650ms
+  Rotasi: YES
+🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨
+```
+
+```cpp
+      sendFonnteAlert();
+```
+**Baris 234:** Trigger WhatsApp notification
+- Call fungsi dijelaskan di atas
+
+```cpp
+      startBuzzerAlarm();
+```
+**Baris 235:** Trigger buzzer alarm
+- Call fungsi dijelaskan di atas
+
+```cpp
+    }
+```
+**Baris 236:** Penutup blok confirmation
+
+#### Bagian I: Timeout Mechanism
+
+```cpp
+    if (elapsed >= IMPACT_WINDOW) {
+```
+**Baris 239:** Check timeout condition
+- `IMPACT_WINDOW` = 3000ms (3 detik)
+- `>=` = Greater than or equal
+- TRUE jika sudah >3 detik tanpa confirmation
+
+```cpp
+      inFreeFall = false;
+```
+**Baris 240:** Reset state ke IDLE
+- Exit detection mode
+- **Alasan:** Prevent stuck state if no confirmation
+
+```cpp
+      Serial.println("⏱️ Timeout");
+```
+**Baris 241:** Log timeout event
+- Debugging info
+
+```cpp
+    }
+```
+**Baris 242:** Penutup blok timeout
+
+```cpp
+  }
+}
+```
+**Baris 243-244:** Penutup blok inFreeFall dan fungsi checkFall()
+
+**Timeout Scenario:**
+```
+t=0ms: Trigger (low acc detected)
+t=500ms: No impact, autoConfirm=YES
+         BUT misfire, quick recovery
+t=1000ms: accTotal back to normal
+t=2000ms: Still in detection (waiting)
+t=3000ms: TIMEOUT! → Reset to IDLE
+         Prevent false alarm ✓
+```
+
+---
+
+**[CONTINUED... Total 800+ baris penjelasan untuk setup() dan loop() dalam response berikutnya jika butuh]**
+
+Apakah mau gw lanjutin dengan setup() dan loop()? Biar complete 100%!
 
 ### Function 1: `sendFonnteAlert()`
 
