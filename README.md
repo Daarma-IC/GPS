@@ -615,6 +615,630 @@ Note: Current code doesn't use threshold on confidence
 
 ---
 
+## 💻 CODE WALKTHROUGH: Line-by-Line Explanation
+
+### Function 1: `sendFonnteAlert()`
+
+**Purpose:** Kirim notifikasi WhatsApp via Fonnte API saat fall detected
+
+```cpp
+void sendFonnteAlert() {
+  if (WiFi.status() != WL_CONNECTED) return;
+```
+**Line 91:** Check WiFi connection status
+- `WL_CONNECTED` = constant dari WiFi library (value: 3)
+- Early return jika tidak connect (prevent crash)
+
+```cpp
+  WiFiClientSecure secure;
+  secure.setInsecure();
+```
+**Line 93-94:** Setup HTTPS client
+- `WiFiClientSecure` = WiFi client dengan SSL/TLS support
+- `setInsecure()` = Skip SSL certificate validation
+  - **Alasan:** Fonnte API uses valid cert, but ESP32 tidak punya root CA store
+  - Production-ready alternative: Upload root certificates to SPIFFS
+
+```cpp
+  HTTPClient http;
+  http.begin(secure, API_URL);
+  int code = http.GET();
+```
+**Line 96-98:** Send HTTP GET request
+- `begin(secure, API_URL)` = Initialize HTTP dengan secure client dan URL
+- `GET()` = Execute HTTP GET request
+- Return code: 200 = success, 4xx/5xx = error
+
+**Why GET instead of POST?**
+- Fonnte API accepts parameters in URL query string
+- Simple notification doesn't need POST body
+
+---
+
+### Function 2: `startBuzzerAlarm()` & `handleBuzzer()`
+
+**Purpose:** Non-blocking buzzer control dengan beep pattern
+
+#### `startBuzzerAlarm()`
+```cpp
+void startBuzzerAlarm() {
+  buzzerActive = true;
+  buzzerStartMs = millis();
+}
+```
+**Line 107-108:** Activate buzzer state machine
+- Set flag `buzzerActive = true`
+- Record start time dengan `millis()` untuk tracking duration
+
+**Why separate function?**
+- Decouple trigger dari handling
+- Allow restart buzzer mid-alarm if needed
+
+#### `handleBuzzer()`
+```cpp
+void handleBuzzer() {
+  if (!buzzerActive) return;
+```
+**Line 112:** Early exit jika buzzer tidak aktif
+- Prevent unnecessary processing
+
+```cpp
+  unsigned long now = millis();
+  unsigned long elapsed = now - buzzerStartMs;
+```
+**Line 114-115:** Calculate elapsed time
+- `now` = Current timestamp
+- `elapsed` = Time since buzzer started
+- **Type `unsigned long`**: Handle rollover correctly (every 49.7 days)
+
+```cpp
+  if (elapsed >= BUZZER_DURATION) {
+    noTone(BUZZER_PIN);
+    buzzerActive = false;
+    return;
+  }
+```
+**Line 117-121:** Check timeout
+- BUZZER_DURATION = 18000ms (18 seconds)
+- `noTone()` = Stop PWM signal to buzzer
+- Reset state to idle
+
+```cpp
+  unsigned long phase = elapsed % BEEP_PERIOD;
+  if (phase < (BEEP_PERIOD / 2)) {
+    tone(BUZZER_PIN, BUZZER_FREQ);
+  } else {
+    noTone(BUZZER_PIN);
+  }
+}
+```
+**Line 124-129:** Beep pattern generation
+- `phase = elapsed % 300` = Position within current beep cycle (0-299ms)
+- First half (0-149ms): `tone()` = Buzzer ON
+- Second half (150-299ms): `noTone()` = Buzzer OFF
+- Creates 150ms ON / 150ms OFF pattern
+
+**Math Behind Pattern:**
+```
+elapsed = 0ms   → phase = 0    → ON
+elapsed = 100ms → phase = 100  → ON
+elapsed = 150ms → phase = 150  → OFF
+elapsed = 200ms → phase = 200  → OFF
+elapsed = 300ms → phase = 0    → ON (cycle repeats)
+```
+
+---
+
+### Function 3: `checkFall()` - Core Fall Detection
+
+**Purpose:** Main algorithm untuk detect dan confirm falls
+
+#### Part 1: Sensor Reading
+```cpp
+void checkFall() {
+  if (!imuOk) return;
+```
+**Line 134:** Safety check
+- Jika IMU init failed, skip detection (prevent garbage readings)
+
+```cpp
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+```
+**Line 136-137:** Read sensor data
+- `sensors_event_t` = Struct dari Adafruit_Sensor.h
+- `&a, &g, &temp` = Pass by reference (efficient, modify in-place)
+- `a` = accelerometer data
+- `g` = gyroscope data  
+- `temp` = temperature (unused)
+
+#### Part 2: Accelerometer Processing
+```cpp
+  ax_g = a.acceleration.x / 9.81;
+  ay_g = a.acceleration.y / 9.81;
+  az_g = a.acceleration.z / 9.81;
+```
+**Line 140-142:** Convert m/s² to g-force
+- Raw data in m/s² (SI units)
+- Divide by 9.81 → normalize to g-force
+- **Why g-force?** More intuitive (1.0 = normal gravity)
+
+```cpp
+  accTotal = sqrt(ax_g*ax_g + ay_g*ay_g + az_g*az_g);
+```
+**Line 143:** Calculate 3D magnitude
+- `sqrt(x²+y²+z²)` = Pythagorean theorem in 3D
+- **Why not use individual axes?**
+  - Orientation-independent
+  - Works regardless of sensor mounting angle
+
+#### Part 3: Gyroscope Processing
+```cpp
+  gx_dps = abs(g.gyro.x * 180.0 / PI);
+  gy_dps = abs(g.gyro.y * 180.0 / PI);
+  gz_dps = abs(g.gyro.z * 180.0 / PI);
+```
+**Line 146-148:** Convert rad/s to deg/s
+- `g.gyro.x` = Raw angular velocity in rad/s
+- `* 180.0 / PI` = Conversion factor (≈ 57.2958)
+- `abs()` = Absolute value (direction doesn't matter, only magnitude)
+
+```cpp
+  gyroTotal = sqrt(gx_dps*gx_dps + gy_dps*gy_dps + gz_dps*gz_dps);
+```
+**Line 149:** Calculate rotational magnitude
+- Same 3D vector magnitude principle as accelerometer
+
+#### Part 4: Debug Output
+```cpp
+  unsigned long now = millis();
+  
+  static unsigned long lastDebug = 0;
+  if (now - lastDebug > 1000) {
+    lastDebug = now;
+    Serial.print("📊 ACC: ");
+    Serial.print(accTotal, 2);
+    // ... more debug output
+  }
+```
+**Line 151-172:** Throttled debug logging
+- `static unsigned long lastDebug` = Retains value between function calls
+- Print every 1000ms (1 second) instead of every loop
+- **Why throttle?**
+  - Serial.print() is slow (~1ms per line)
+  - Too much output floods serial monitor
+  - Reduces loop() execution time
+
+#### Part 5: Cooldown Check
+```cpp
+  if (now - lastFallAt < fallCooldown) return;
+```
+**Line 174:** Prevent re-trigger
+- `fallCooldown = 2000ms`
+- If fall detected within last 2 seconds, ignore current check
+- **Prevents:** Multiple alerts from single event (bouncing)
+
+#### Part 6: Trigger Detection
+```cpp
+  if (!inFreeFall && (accTotal < FALL_THR_LOW || gyroTotal > GYRO_ROTATION_THR)) {
+```
+**Line 177:** Multi-condition trigger
+- `!inFreeFall` = Not already in detection state (prevent re-entry)
+- `accTotal < 0.98g` = Low acceleration (possible free fall)
+- `gyroTotal > 50°/s` = Rapid rotation (tumbling)
+- **OR logic**: Either condition triggers detection
+
+**Why OR instead of AND?**
+```
+Scenario A: Straight drop → Low acc, minimal rotation → Trigger
+Scenario B: Tumbling fall → Normal acc, high rotation → Trigger
+AND logic would miss one of these!
+```
+
+```cpp
+    inFreeFall = true;
+    freeFallStart = now;
+    rotationDetected = (gyroTotal > GYRO_ROTATION_THR);
+```
+**Line 178-180:** State transition
+- Enter detection mode
+- Record timestamp for elapsed calculation
+- Flag trigger type for debugging
+
+#### Part 7: Confirmation Logic
+```cpp
+  if (inFreeFall) {
+    unsigned long elapsed = now - freeFallStart;
+```
+**Line 194-198:** Calculate time in free fall
+- `inFreeFall` = Currently in detection window
+- `elapsed` = Time since trigger
+
+```cpp
+    bool hasImpact = (accTotal > IMPACT_THR);
+    bool autoConfirm = (elapsed > 500);
+```
+**Line 204-205:** Dual confirmation strategy
+- **Strategy A (Impact):** Acceleration spike > 1.05g
+- **Strategy B (Auto):** Sustained change > 500ms
+
+```cpp
+    if ((hasImpact || autoConfirm) && elapsed < IMPACT_WINDOW) {
+```
+**Line 207:** Confirmation conditions
+- `(hasImpact || autoConfirm)` = At least one strategy confirms
+- `elapsed < IMPACT_WINDOW` = Within 3-second window
+- **Why both?** 
+  - OR = Flexible (works for multiple scenarios)
+  - AND with window = Prevent late confirmation
+
+#### Part 8: Fall Confirmed Actions
+```cpp
+      fallDetected = true;
+      fallStrength = accTotal;
+      freefallMs = elapsed;
+```
+**Line 208-210:** Record metrics
+- Set flag for main loop
+- Save strength for confidence calculation
+- Save duration for telemetry
+
+```cpp
+      fallConfidence = (freefallMs / 800.0) * (fallStrength / 2.0);
+      if (fallConfidence > 1.0) fallConfidence = 1.0;
+```
+**Line 212-213:** Calculate confidence score
+- Normalize duration: 800ms = reference
+- Normalize strength: 2.0g = reference
+- Clamp to [0.0, 1.0] range
+
+```cpp
+      fallId++;
+      lastFallAt = now;
+      inFreeFall = false;
+```
+**Line 215-217:** Update state
+- Increment fall ID (unique identifier)
+- Record time for cooldown
+- Exit detection mode (prepare for next detection)
+
+```cpp
+      sendFonnteAlert();
+      startBuzzerAlarm();
+```
+**Line 234-235:** Trigger alerts
+- WhatsApp notification via Fonnte
+- Local buzzer alarm
+
+#### Part 9: Timeout Handling
+```cpp
+    if (elapsed >= IMPACT_WINDOW) {
+      inFreeFall = false;
+      Serial.println("⏱️ Timeout");
+    }
+  }
+}
+```
+**Line 239-242:** False alarm cancellation
+- If 3 seconds pass without confirmation → reset
+- Prevent stuck state
+- Return to normal detection mode
+
+---
+
+### Function 4: `setup()` - Initialization
+
+**Purpose:** One-time configuration saat ESP32 boot
+
+```cpp
+void setup() {
+  Serial.begin(115200);
+  delay(300);
+```
+**Line 248-249:** Serial communication
+- 115200 baud = Fast, ideal untuk debugging
+- `delay(300)` = Wait for serial port to stabilize
+  - **Why?** Some Serial.print() calls immediately after begin() may be lost
+
+#### Buzzer Initialization
+```cpp
+  pinMode(BUZZER_PIN, OUTPUT);
+  noTone(BUZZER_PIN);
+```
+**Line 254-255:** Configure buzzer pin
+- `OUTPUT` mode = Pin can drive current
+- `noTone()` = Ensure buzzer starts OFF
+
+#### I2C & MPU6050 Setup
+```cpp
+  Wire.begin(MPU_SDA_PIN, MPU_SCL_PIN);
+```
+**Line 258:** Initialize I2C bus
+- `SDA=21, SCL=22` = Default ESP32 I2C pins
+- **Why specify pins?** ESP32 allows remapping (flexibility)
+
+```cpp
+  imuOk = mpu.begin();
+  if (!imuOk) {
+    Serial.println("❌ MPU6050 NOT FOUND...");
+  } else {
+    Serial.println("✅ MPU6050 OK!");
+```
+**Line 264-268:** IMU initialization
+- `mpu.begin()` = I2C scan for device at 0x68 address
+- Return `true` if found, `false` if not
+- **Graceful degradation**: Set flag but continue boot
+
+```cpp
+    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+    mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
+```
+**Line 269-271:** Configure sensor ranges
+- ±8g range = Sufficient for falls (typically < 4g)
+- ±500°/s = Sufficient for tumbling
+- 5 Hz filter = Remove high-frequency noise
+
+**Why 5 Hz filter specifically?**
+```
+Human motion frequency: 0.5-20 Hz
+Fall events: 1-10 Hz
+High-freq noise: >100 Hz
+
+5 Hz cutoff:
+✓ Pass fall signals (1-10 Hz mostly preserved)
+✗ Block noise (>5 Hz attenuated)
+```
+
+```cpp
+    delay(2000);
+```
+**Line 272:** Calibration time
+- IMU needs 2 seconds to stabilize after config change
+- Internal filters need time to settle
+
+#### GPS UART Setup
+```cpp
+  gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+```
+**Line 276:** Configure UART2 for GPS
+- `GPS_BAUD = 38400` = Baud rate
+- `SERIAL_8N1` = 8 data bits, No parity, 1 stop bit
+- `GPS_RX_PIN=16, GPS_TX_PIN=17` = Hardware pins
+
+**Why 8N1 format?**
+```
+8 bits = 256 possible values (ASCII compatible)
+No parity = No error checking (GPS data reliable)
+1 stop bit = Standard (2 stop bits for slower/noisy lines)
+```
+
+#### WiFi Connection
+```cpp
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+```
+**Line 281-287:** Connect to WiFi
+- `WIFI_STA` = Station mode (client, not AP)
+- `begin()` = Non-blocking WiFi connect start
+- `while` loop = Block until connected
+  - **Why blocking here?** Need WiFi before main loop
+  - Print dots = Visual feedback
+
+```cpp
+  Serial.println(WiFi.localIP());
+```
+**Line 290:** Print assigned IP
+- Useful for debugging network issues
+- Confirms DHCP success
+
+---
+
+### Function 5: `loop()` - Main Event Loop
+
+**Purpose:** Continuously running main logic
+
+#### GPS Data Reading
+```cpp
+void loop() {
+  while (gpsSerial.available()) {
+    char c = gpsSerial.read();
+    gps.encode(c);
+    lastNmeaMillis = millis();
+    uartOk = true;
+  }
+```
+**Line 322-327:** Parse GPS NMEA sentences
+- `available()` = Bytes waiting in RX buffer
+- `read()` = Get one byte
+- `encode(c)` = Feed to TinyGPS++ parser (state machine)
+- Update timestamp on every byte received
+
+**Why character-by-character?**
+- NMEA sentences can be 80+ bytes
+- Processing byte-by-byte prevents blocking
+- TinyGPS++ handles incomplete sentences internally
+
+```cpp
+  if (millis() - lastNmeaMillis > uartTimeout) uartOk = false;
+```
+**Line 328:** UART health check
+- If no data for 3 seconds → mark as failed
+- Indicates GPS disconnected or malfunctioning
+
+#### GPS Fix Caching
+```cpp
+  if (gps.location.isValid()) {
+    lastFixValid = true;
+    lastLat = gps.location.lat();
+    lastLng = gps.location.lng();
+    lastSat = gps.satellites.value();
+    lastFixAt = millis();
+  }
+```
+**Line 331-337:** Cache last valid position
+- `isValid()` = TinyGPS++ validates checksum & data
+- Store in separate variables
+- **Why cache?** If fall detected during "no fix", use last known location
+
+#### Core Functions Call
+```cpp
+  checkFall();
+  handleBuzzer();
+```
+**Line 340-343:** Execute detection & buzzer
+- `checkFall()` = Main fall detection algorithm
+- `handleBuzzer()` = Non-blocking buzzer control
+
+#### Telemetry Transmission
+```cpp
+  unsigned long now = millis();
+  if (now - lastSend >= sendInterval) {
+    lastSend = now;
+```
+**Line 346-348:** Throttle to 1 second intervals
+- `sendInterval = 1000ms`
+- Update `lastSend` to prevent drift
+
+```cpp
+    String payload = "{";
+    payload += "\"uart_ok\":";
+    payload += uartOk ? "true" : "false";
+    payload += ",";
+```
+**Line 350-354:** Start JSON payload
+- Manual string concatenation (no JSON library)
+- **Why manual?** ArduinoJson adds ~15KB to binary size
+
+```cpp
+    if (gps.location.isValid()) {
+      payload += "\"latitude\":";
+      payload += String(gps.location.lat(), 6);
+      // ...
+    } else {
+      payload += "\"error\":\"no_fix\",";
+    }
+```
+**Line 356-371:** Conditional GPS data
+- If fix valid → include lat/lng/sats
+- If no fix → send error message
+- `String(..., 6)` = 6 decimal places precision
+
+```cpp
+    if (fallDetected) {
+      payload += ",\"fall_strength\":";
+      payload += String(fallStrength, 2);
+      // ... more fall data
+      
+      fallDetected = false;
+    }
+```
+**Line 386-410:** Append fall event data
+- Only if `fallDetected == true`
+- Include all metrics (strength, confidence, ID, etc.)
+- **Line 409: Reset flag** = Critical! Prevent re-sending same event
+
+```cpp
+    if (WiFi.status() == WL_CONNECTED) {
+      HTTPClient http;
+      
+      if (String(serverUrl).startsWith("https://")) {
+        secureClient.setInsecure();
+        http.begin(secureClient, serverUrl);
+      } else {
+        http.begin(wifiClient, serverUrl);
+      }
+```
+**Line 416-425:** Smart client selection
+- Check if URL is HTTPS
+- Use `secureClient` for HTTPS, `wifiClient` for HTTP
+- **Why dynamic?** Support both ngrok (HTTPS) and local (HTTP) testing
+
+```cpp
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("ngrok-skip-browser-warning", "true");
+```
+**Line 427-428:** Add HTTP headers
+- Content-Type = Tell server we're sending JSON
+- ngrok-skip = Bypass ngrok browser warning page
+
+```cpp
+      int httpCode = http.POST(payload);
+      Serial.print("[HTTP ");
+      Serial.print(httpCode);
+      Serial.println("]");
+```
+**Line 430-433:** Send POST request
+- `POST(payload)` = Blocking call (wait for response)
+- Print status code for debugging
+  - 200-299 = Success
+  - 400-499 = Client error
+  - 500-599 = Server error
+
+```cpp
+      if (httpCode > 0) {
+        String response = http.getString();
+        Serial.println(response);
+      }
+      
+      http.end();
+```
+**Line 435-444:** Handle response & cleanup
+- `getString()` = Read response body
+- `http.end()` = Close connection, free resources
+  - **Critical!** Without this, connections leak (max 4 concurrent)
+
+---
+
+## 🎯 Key Coding Principles Demonstrated
+
+### 1. **Non-Blocking Design**
+```cpp
+// BAD (blocking):
+delay(18000);  // Freeze for 18 seconds!
+
+// GOOD (non-blocking):
+if (millis() - buzzerStartMs < BUZZER_DURATION) {
+  // Still responsive during buzzer
+}
+```
+
+### 2. **State Machine Pattern**
+```
+IDLE → TRIGGER → CONFIRMATION → ALERT → COOLDOWN → IDLE
+```
+- Clear states with boolean flags
+- Timeout mechanisms prevent stuck states
+
+### 3. **Defensive Programming**
+```cpp
+if (!imuOk) return;              // Guard clause
+if (confidence > 1.0) confidence = 1.0;  // Range clamping
+```
+
+### 4. **Efficient String Building**
+```cpp
+// Avoid String in loops (heap fragmentation)
+String payload = "{";
+payload += "\"lat\":";
+payload += value;
+// OK: Short-lived, single use per second
+```
+
+### 5. **Type Safety**
+```cpp
+unsigned long elapsed = now - freeFallStart;
+// Correct: Handles rollover at 49.7 days
+// If used signed int: Breaks after 32.7 days!
+```
+
+---
+
 ## 🏗️ Arsitektur Sistem
 
 ### Hardware Yang Digunakan
