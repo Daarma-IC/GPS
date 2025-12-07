@@ -23,7 +23,7 @@
 
 **Copy and paste this EXACT command:**
 ```powershell
-ngrok http --url=nonaffinitive-cablelaid-kara.ngrok-free.dev 8080
+   ngrok http --url=nonaffinitive-cablelaid-kara.ngrok-free.dev 8080
 ```
 
 **Press Enter**

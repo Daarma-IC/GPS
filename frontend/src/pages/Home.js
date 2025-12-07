@@ -6,6 +6,7 @@ import {
   CircleMarker,
   Popup,
   Pane,
+  useMap,
 } from "react-leaflet";
 import L from "leaflet";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
@@ -21,11 +22,26 @@ L.Icon.Default.mergeOptions({
 // ========================
 // AUTO DETECT HOSTNAME
 // ========================
-const WS_URL = `ws://${window.location.hostname}:8080`;
+const WS_URL = `ws://${window.location.hostname}:8081`; // Changed from 8080 to 8081
 
 const DEFAULT_CENTER = { lat: -2.5, lng: 118.0 };
-const FALL_WAVE_DURATION = 100000;
-const FALL_WAVE_EXTRA = 3500;
+
+// Component to auto-center map when GPS location is detected
+function MapUpdater({ center }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (center && center.lat !== DEFAULT_CENTER.lat && center.lng !== DEFAULT_CENTER.lng) {
+      // Pan to new location smoothly
+      map.setView([center.lat, center.lng], map.getZoom(), {
+        animate: true,
+        duration: 0.5,
+      });
+    }
+  }, [center, map]);
+
+  return null;
+}
 
 function Home() {
   const [gpsData, setGpsData] = useState(null);
@@ -60,21 +76,50 @@ function Home() {
           if (fid === lastFallIdRef.current) return;
           lastFallIdRef.current = fid;
 
+          // Skip auto-calibration messages (not real falls)
+          const fallStrength = parsed.fall_strength || "";
+          if (typeof fallStrength === "string" &&
+            (fallStrength.toLowerCase().includes("calibrat") ||
+              fallStrength.toLowerCase().includes("auto"))) {
+            console.log('ℹ️ Skipping auto-calibration message (not a real fall)');
+            return;
+          }
+
           const fallLat =
             parsed.fall_lat != null ? Number(parsed.fall_lat) : Number(parsed.latitude);
           const fallLng =
             parsed.fall_lng != null ? Number(parsed.fall_lng) : Number(parsed.longitude);
 
+          // Only create fall event if coordinates are valid
+          if (!isFinite(fallLat) || !isFinite(fallLng)) {
+            console.warn('⚠️ Fall detected but coordinates are invalid (NaN). Skipping fall event.', {
+              fallLat,
+              fallLng,
+              rawData: parsed
+            });
+            return;
+          }
+
           setFallEvents((prev) => {
             const now = Date.now();
+            // Use Date.now() instead of parsed.fall_ts because ESP32 sends millis() (uptime)
+            // which doesn't match real time. Browser time is more accurate.
+            const fallTimestamp = now;
+
+            console.log('🚨 Adding fall event:', {
+              id: fid,
+              timestamp: new Date(fallTimestamp).toLocaleTimeString(),
+              lat: fallLat,
+              lng: fallLng
+            });
+
             const next = [
               {
                 id: fid,
                 lat: fallLat,
                 lng: fallLng,
-                ts: parsed.fall_ts ?? now,
+                ts: fallTimestamp,
                 strength: parsed.fall_strength ?? null,
-                expiresAt: now + FALL_WAVE_DURATION + FALL_WAVE_EXTRA,
               },
               ...prev,
             ];
@@ -88,14 +133,33 @@ function Home() {
     shouldReconnect: () => true,
   });
 
-  // Cleanup expired fall waves - REMOVED to keep logs persistent
-  // We only want to stop the animation, not remove the log
+  // Cleanup expired fall events (remove after 10 minutes)
   useEffect(() => {
     const iv = setInterval(() => {
       const now = Date.now();
-      // Only force re-render for animation updates if needed, but don't filter out events
-      // setFallEvents((prev) => prev.map(e => ({...e, isAnimating: e.expiresAt > now}))); 
-    }, 1000);
+      const TEN_MINUTES = 10 * 60 * 1000; // 600,000 ms = 10 minutes
+
+      setFallEvents((prev) => {
+        const filtered = prev.filter(e => {
+          const age = now - e.ts;
+          const ageMinutes = Math.floor(age / 60000);
+          const keepEvent = age < TEN_MINUTES;
+
+          if (!keepEvent) {
+            console.log(`🗑️ Removing fall event (age: ${ageMinutes} minutes)`);
+          }
+
+          return keepEvent;
+        });
+
+        if (filtered.length !== prev.length) {
+          console.log(`✅ Cleanup: Removed ${prev.length - filtered.length} events older than 10 minutes`);
+          console.log(`📊 Remaining events: ${filtered.length}`);
+        }
+
+        return filtered;
+      });
+    }, 60000); // Check every minute
     return () => clearInterval(iv);
   }, []);
 
@@ -209,25 +273,27 @@ function Home() {
               <span className="panel-icon">🚨</span> Fall Alerts
             </div>
             <div className="mp-panel-body">
-              {fallEvents.length === 0 && (
-                <div className="muted">Belum ada jatuh terdeteksi</div>
-              )}
-              {fallEvents.map((ev) => {
-                const isRecent = Date.now() - ev.ts < 60000;
-                return (
-                  <div key={ev.id} className={`alert-item ${!isRecent ? 'alert-old' : ''}`}>
-                    <div className="alert-flex-container">
-                      <span>🚨 JATUH TERDETEKSI</span>
-                      {isRecent && <span className="mp-badge mp-badge-error alert-badge-new">BARU</span>}
+              <div className="fall-alerts-scroll">
+                {fallEvents.length === 0 && (
+                  <div className="muted">Belum ada jatuh terdeteksi</div>
+                )}
+                {fallEvents.map((ev) => {
+                  const isRecent = Date.now() - ev.ts < 60000;
+                  return (
+                    <div key={ev.id} className={`alert-item ${!isRecent ? 'alert-old' : ''}`}>
+                      <div className="alert-flex-container">
+                        <span>🚨 JATUH TERDETEKSI</span>
+                        {isRecent && <span className="mp-badge mp-badge-error alert-badge-new">BARU</span>}
+                      </div>
+                      <div className="small">
+                        {new Date(ev.ts).toLocaleTimeString()} <br />
+                        Lat: {ev.lat?.toFixed(6)} | Lng: {ev.lng?.toFixed(6)}
+                        {ev.strength && <> | Strength: {ev.strength}</>}
+                      </div>
                     </div>
-                    <div className="small">
-                      {new Date(ev.ts).toLocaleTimeString()} <br />
-                      Lat: {ev.lat?.toFixed(6)} | Lng: {ev.lng?.toFixed(6)}
-                      {ev.strength && <> | Strength: {ev.strength}</>}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         </aside>
@@ -256,34 +322,47 @@ function Home() {
             >
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
+              {/* Auto-center map when GPS location is detected */}
+              <MapUpdater center={center} />
+
               <Pane name="fallPane">
-                {fallEvents.map((ev) => {
-                  const isRecent = Date.now() - ev.ts < 60000; // 1 minute
+                {fallEvents.filter(ev => isFinite(ev.lat) && isFinite(ev.lng)).map((ev) => {
+                  const age = Date.now() - ev.ts;
+                  const isFresh = age < 600000; // Show animation for 10 minutes (600 seconds)
+
                   return (
                     <React.Fragment key={ev.id}>
-                      {/* Pulsing animation only for recent events */}
-                      {isRecent && [0, 1, 2].map((i) => (
+                      {/* Radar-like wave animation for fresh events */}
+                      {isFresh && [0, 1, 2, 3].map((i) => (
                         <CircleMarker
-                          key={`${ev.id}-${i}`}
+                          key={`${ev.id}-wave-${i}`}
                           center={[ev.lat, ev.lng]}
-                          radius={10}
-                          pathOptions={{ className: `pulse-circle pulse-delay-${i}` }}
+                          radius={50}
+                          pathOptions={{
+                            color: '#ef4444',
+                            fillColor: 'none',
+                            weight: 2,
+                            opacity: 0,
+                            className: `fall-wave fall-wave-${i}`
+                          }}
                         />
                       ))}
-                      {/* Static marker for all events */}
+
+                      {/* Central marker for all events */}
                       <CircleMarker
                         center={[ev.lat, ev.lng]}
-                        radius={6}
+                        radius={8}
                         pathOptions={{
                           color: '#ef4444',
                           fillColor: '#ef4444',
-                          fillOpacity: 0.8,
-                          weight: 2
+                          fillOpacity: isFresh ? 1.0 : 0.6,
+                          weight: 3
                         }}
                       >
                         <Popup>
-                          <strong>JATUH TERDETEKSI</strong><br />
-                          {new Date(ev.ts).toLocaleTimeString()}
+                          <strong>🚨 JATUH TERDETEKSI</strong><br />
+                          Waktu: {new Date(ev.ts).toLocaleTimeString()}<br />
+                          {ev.strength && `Kekuatan: ${ev.strength}g`}
                         </Popup>
                       </CircleMarker>
                     </React.Fragment>

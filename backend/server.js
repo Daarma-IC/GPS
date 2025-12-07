@@ -6,7 +6,7 @@ const axios = require("axios");
 const cors = require("cors");
 
 const app = express();
-const PORT = 3001;
+const PORT = 8080; // Changed to 8080 to match ngrok tunnel
 
 app.use(express.json());
 app.use(cors());
@@ -14,11 +14,11 @@ app.use(cors());
 // ===== Telegram Bot Config =====
 const TELEGRAM_BOT_TOKEN = "8504372055:AAH8QnsObWHkxSLKJWYxD3LYpf9Wlh89lz4";
 const TELEGRAM_CHAT_ID = 1310552986; // INTEGER, bukan string
-const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+// const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 const ip = getLocalIP();
 const WEB_URL = ip ? `http://${ip}:3000` : `http://localhost:3000`;
 
-const wss = new WebSocket.Server({ port: 8080 });
+const wss = new WebSocket.Server({ port: 8081 }); // Changed to 8081 to avoid conflict with HTTP server
 
 // ===== helper: ambil IPv4 LAN =====
 function getLocalIP() {
@@ -235,7 +235,7 @@ app.get("/falls/:fallId", (req, res) => {
 app.get("/ws-info", (req, res) => {
   const ip = getLocalIP();
   res.json({
-    ws_url: ip ? `ws://${ip}:8080` : `ws://localhost:8080`
+    ws_url: ip ? `ws://${ip}:8081` : `ws://localhost:8081`
   });
 });
 
@@ -265,16 +265,16 @@ setInterval(() => {
   console.log(
     lastEspDataAt
       ? `Last ESP data    : ${lastEspDataAt.toLocaleTimeString()} (${Math.round(
-          espAgeMs / 1000
-        )}s ago)`
+        espAgeMs / 1000
+      )}s ago)`
       : `Last ESP data    : belum ada`
   );
 
   console.log(
     lastFallAt
       ? `Last FALL event  : ${lastFallAt.toLocaleTimeString()} (${Math.round(
-          fallAgeMs / 1000
-        )}s ago)`
+        fallAgeMs / 1000
+      )}s ago)`
       : `Last FALL event  : belum ada`
   );
 
@@ -291,8 +291,8 @@ app.listen(PORT, () => {
   console.log(`HTTP server (local)  : http://localhost:${PORT}`);
   if (ip) console.log(`HTTP server (LAN)    : http://${ip}:${PORT}`);
 
-  console.log(`WebSocket (local)    : ws://localhost:8080`);
-  if (ip) console.log(`WebSocket (LAN)      : ws://${ip}:8080`);
+  console.log(`WebSocket (local)    : ws://localhost:8081`);
+  if (ip) console.log(`WebSocket (LAN)      : ws://${ip}:8081`);
 
   if (!ip) console.log("[WARN] IP LAN tidak ketemu. Cek WiFi/LAN.");
 });

@@ -7,8 +7,8 @@
 #include <WiFiClientSecure.h>
 
 // ================= WIFI =================
-const char* ssid       = "Kosan Pa Nendi lt2";
-const char* password   = "GBABlok05";
+const char* ssid       = "Rendem";
+const char* password   = "hackathon!212";
 const char* serverUrl  = "https://nonaffinitive-cablelaid-kara.ngrok-free.dev/gps";
 
 // ================= FONNTE =================
@@ -35,14 +35,22 @@ double lastLat = 0, lastLng = 0;
 uint32_t lastSat = 0;
 unsigned long lastFixAt = 0;
 
+// ================= IMU (I2C) =================
+static const int MPU_SDA_PIN = 21;  // I2C SDA pin (default ESP32)
+static const int MPU_SCL_PIN = 22;  // I2C SCL pin (default ESP32)
+// Alternative pins: SDA=23, SCL=19 or SDA=25, SCL=26 or any GPIO
+
 // ================= IMU =================
 Adafruit_MPU6050 mpu;
 bool imuOk = false;
 
-// Threshold fall
-const float FALL_THR_LOW = 0.75;           // free fall < 0.75g
-const float IMPACT_THR   = 1.8;            // impact > 1.8g
-const unsigned long IMPACT_WINDOW = 800;   // ms window setelah freefall
+// Threshold SUPER SENSITIF untuk tongkat jatuh 1cm (hampir tidak ada impact)
+// Strategi: Deteksi ORIENTASI BERUBAH (gyroscope) atau GERAKAN APAPUN
+const float FALL_THR_LOW = 0.98;           // Gerakan kecil < 0.98g
+const float IMPACT_THR   = 1.05;           // Impact sangat ringan > 1.05g  
+const unsigned long IMPACT_WINDOW = 3000;  // 3 detik window (sangat lama)
+const unsigned long fallCooldown = 2000;   // 2 detik cooldown
+const float GYRO_ROTATION_THR = 50.0;      // Rotasi > 50°/s (SANGAT SENSITIF)
 
 bool inFreeFall = false;
 unsigned long freeFallStart = 0;
@@ -54,10 +62,13 @@ float fallConfidence = 0.0;
 unsigned long freefallMs = 0;
 uint32_t fallId = 0;
 unsigned long lastFallAt = 0;
-const unsigned long fallCooldown = 5000;
 
 // raw accel cache for debug/payload
 float ax_g = 0, ay_g = 0, az_g = 0, accTotal = 0;
+
+// Gyroscope data (untuk deteksi tongkat berputar saat jatuh)
+float gx_dps = 0, gy_dps = 0, gz_dps = 0, gyroTotal = 0;
+bool rotationDetected = false;
 
 // ================= BUZZER =================
 static const int BUZZER_PIN = 25;                 // pilih pin aman (bukan strapping)
@@ -118,32 +129,85 @@ void handleBuzzer() {
   }
 }
 
-// ================= FALL CHECK =================
+// ================= FALL CHECK (OPTIMIZED FOR WALKING STICK) =================
 void checkFall() {
   if (!imuOk) return;
 
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
 
+  // Accelerometer data
   ax_g = a.acceleration.x / 9.81;
   ay_g = a.acceleration.y / 9.81;
   az_g = a.acceleration.z / 9.81;
   accTotal = sqrt(ax_g*ax_g + ay_g*ay_g + az_g*az_g);
 
+  // Gyroscope data (deteksi rotasi saat tongkat jatuh miring)
+  gx_dps = abs(g.gyro.x * 180.0 / PI);  // Convert rad/s to deg/s
+  gy_dps = abs(g.gyro.y * 180.0 / PI);
+  gz_dps = abs(g.gyro.z * 180.0 / PI);
+  gyroTotal = sqrt(gx_dps*gx_dps + gy_dps*gy_dps + gz_dps*gz_dps);
+
   unsigned long now = millis();
+
+  // Debug output every second
+  static unsigned long lastDebug = 0;
+  if (now - lastDebug > 1000) {
+    lastDebug = now;
+    Serial.print("📊 ACC: ");
+    Serial.print(accTotal, 2);
+    Serial.print("g | GYRO: ");
+    Serial.print(gyroTotal, 0);
+    Serial.print("°/s | Thresholds: acc<");
+    Serial.print(FALL_THR_LOW);
+    Serial.print("g OR gyro>");
+    Serial.print(GYRO_ROTATION_THR);
+    Serial.print("°/s, impact>");
+    Serial.print(IMPACT_THR);
+    Serial.print("g");
+    if (inFreeFall) {
+      Serial.print(" | ⚠️ TONGKAT JATUH! Waiting for impact...");
+    }
+    Serial.println();
+  }
 
   if (now - lastFallAt < fallCooldown) return;
 
-  if (!inFreeFall && accTotal < FALL_THR_LOW) {
+  // Detect fall: Rotasi ATAU perubahan percepatan
+  if (!inFreeFall && (accTotal < FALL_THR_LOW || gyroTotal > GYRO_ROTATION_THR)) {
     inFreeFall = true;
     freeFallStart = now;
+    rotationDetected = (gyroTotal > GYRO_ROTATION_THR);
+    
+    Serial.println();
+    if (rotationDetected) {
+      Serial.print("🔄 ROTASI! gyro=");
+      Serial.print(gyroTotal, 0);
+      Serial.println("°/s");
+    } else {
+      Serial.print("⬇️ GERAKAN! acc=");
+      Serial.print(accTotal, 2);
+      Serial.println("g");
+    }
   }
 
   if (inFreeFall) {
-    if (accTotal > IMPACT_THR && (now - freeFallStart) < IMPACT_WINDOW) {
+    // OPSI A: Tunggu impact (jatuh dari tinggi)
+    // OPSI B: Auto-confirm setelah 500ms (orientasi berubah = jatuh)
+    
+    unsigned long elapsed = now - freeFallStart;
+    
+    // Konfirmasi jatuh jika:
+    // 1. Ada impact >1.05g, ATAU
+    // 2. Sudah 500ms sejak rotasi/gerakan terdeteksi (auto-confirm)
+    
+    bool hasImpact = (accTotal > IMPACT_THR);
+    bool autoConfirm = (elapsed > 500); // Auto-confirm setelah 500ms
+    
+    if ((hasImpact || autoConfirm) && elapsed < IMPACT_WINDOW) {
       fallDetected = true;
       fallStrength = accTotal;
-      freefallMs = now - freeFallStart;
+      freefallMs = elapsed;
 
       fallConfidence = (freefallMs / 800.0) * (fallStrength / 2.0);
       if (fallConfidence > 1.0) fallConfidence = 1.0;
@@ -152,19 +216,29 @@ void checkFall() {
       lastFallAt = now;
       inFreeFall = false;
 
-      Serial.print("🚨 FALL DETECTED strength=");
-      Serial.print(fallStrength);
-      Serial.print(" freefallMs=");
+      Serial.println();
+      Serial.println("🚨🚨🚨 TONGKAT JATUH! 🚨🚨🚨");
+      Serial.print("  Trigger: ");
+      Serial.println(hasImpact ? "Impact" : "Auto (orientasi berubah)");
+      Serial.print("  Strength: ");
+      Serial.print(fallStrength, 2);
+      Serial.println("g");
+      Serial.print("  Duration: ");
       Serial.print(freefallMs);
-      Serial.print(" conf=");
-      Serial.println(fallConfidence);
+      Serial.println("ms");
+      Serial.print("  Rotasi: ");
+      Serial.println(rotationDetected ? "YES" : "NO");
+      Serial.println("🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨");
+      Serial.println();
 
       sendFonnteAlert();
-      startBuzzerAlarm();  // bunyi 18 detik
+      startBuzzerAlarm();
     }
 
-    if ((now - freeFallStart) >= IMPACT_WINDOW) {
+    // Timeout
+    if (elapsed >= IMPACT_WINDOW) {
       inFreeFall = false;
+      Serial.println("⏱️ Timeout");
     }
   }
 }
@@ -181,7 +255,12 @@ void setup() {
   noTone(BUZZER_PIN);
 
   // ---- I2C MPU6050 ----
-  Wire.begin(21, 22);  // SDA, SCL ESP32 default
+  Wire.begin(MPU_SDA_PIN, MPU_SCL_PIN);  // Initialize I2C with defined pins
+  Serial.print("I2C initialized: SDA=");
+  Serial.print(MPU_SDA_PIN);
+  Serial.print(", SCL=");
+  Serial.println(MPU_SCL_PIN);
+  
   imuOk = mpu.begin();
   if (!imuOk) {
     Serial.println("❌ MPU6050 NOT FOUND. Cek SDA/SCL + GND common!");
@@ -209,6 +288,30 @@ void setup() {
   Serial.println();
   Serial.print("WiFi OK, IP=");
   Serial.println(WiFi.localIP());
+
+  // Print fall detection configuration
+  Serial.println();
+  Serial.println("========== FALL DETECTION CONFIG ==========");
+  Serial.println("MODE: SUPER SENSITIF (1cm, auto-confirm 500ms)");
+  Serial.print("  Movement threshold: <");
+  Serial.print(FALL_THR_LOW);
+  Serial.println("g");
+  Serial.print("  Gyro rotation threshold: >");
+  Serial.print(GYRO_ROTATION_THR);
+  Serial.println("°/s");
+  Serial.print("  Impact threshold: >");
+  Serial.print(IMPACT_THR);
+  Serial.println("g (optional)");
+  Serial.print("  Auto-confirm: 500ms");
+  Serial.println();
+  Serial.print("  Detection window: ");
+  Serial.print(IMPACT_WINDOW);
+  Serial.println("ms");
+  Serial.print("  Cooldown: ");
+  Serial.print(fallCooldown / 1000);
+  Serial.println("s");
+  Serial.println("===========================================");
+  Serial.println();
 
   lastNmeaMillis = millis();
 }
@@ -312,13 +415,32 @@ void loop() {
 
     if (WiFi.status() == WL_CONNECTED) {
       HTTPClient http;
-      secureClient.setInsecure();  // Skip certificate validation for ngrok
-      http.begin(secureClient, serverUrl);
+      
+      // Use wifiClient for HTTP, secureClient for HTTPS
+      if (String(serverUrl).startsWith("https://")) {
+        secureClient.setInsecure();
+        http.begin(secureClient, serverUrl);
+      } else {
+        http.begin(wifiClient, serverUrl);
+      }
+      
       http.addHeader("Content-Type", "application/json");
+      http.addHeader("ngrok-skip-browser-warning", "true");
+      
       int httpCode = http.POST(payload);
       Serial.print("[HTTP ");
       Serial.print(httpCode);
       Serial.println("]");
+      
+      if (httpCode > 0) {
+        String response = http.getString();
+        Serial.print("Response: ");
+        Serial.println(response);
+      } else {
+        Serial.print("Error: ");
+        Serial.println(http.errorToString(httpCode));
+      }
+      
       http.end();
     }
   }
