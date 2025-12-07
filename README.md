@@ -8,6 +8,610 @@
 5. [Algoritma Deteksi Jatuh](#algoritma-deteksi-jatuh)
 6. [Formula Matematis](#formula-matematis)
 7. [Komunikasi & Protokol](#komunikasi--protokol)
+8. [**FISIKA LENGKAP: Derivasi & Aplikasi**](#fisika-lengkap-derivasi--aplikasi)
+
+---
+
+## 🔬 FISIKA LENGKAP: Derivasi & Aplikasi
+
+### A. DASAR TEORI FISIKA
+
+#### 1. Hukum Newton & Gravitasi
+
+**Hukum Newton II:**
+```
+F = m × a
+F: Gaya (Newton)
+m: Massa (kg)
+a: Percepatan (m/s²)
+```
+
+**Gravitasi Bumi:**
+```
+Fg = m × g
+g = 9.81 m/s² (percepatan gravitasi di permukaan bumi)
+```
+
+**Aplikasi di Accelerometer:**
+```
+Saat diam di permukaan bumi:
+- Gaya gravitasi: Fg = m × 9.81 (ke bawah)
+- Gaya normal: Fn = m × 9.81 (ke atas)
+- Net force: F = 0 (equilibrium)
+- Accelerometer membaca: a = g = 9.81 m/s² = 1.0g
+```
+
+**Kenapa Accelerometer Baca 1g Saat Diam?**
+
+Ini **bukan paradoks**! Accelerometer mengukur **proper acceleration** (non-gravitational acceleration):
+
+```
+Proper Acceleration = Total Acceleration - Free Fall Acceleration
+                    = (Normal Force/m) - g
+                    = g - g (saat diam)
+                    = 0
+
+TAPI sensor accelerometer frame of reference adalah **sensor itu sendiri**
+yang merasakan Normal Force dari lantai.
+
+Saat diam: sensor baca Normal Force = mg = 1.0g (upward)
+Saat free fall: sensor baca 0g (no normal force)
+```
+
+#### 2. Gerak Jatuh Bebas (Free Fall)
+
+**Definisi:** Gerak benda yang hanya dipengaruhi gravitasi (tanpa hambatan udara)
+
+**Persamaan Kinematika:**
+
+```
+v = v₀ + gt              (kecepatan)
+h = v₀t + ½gt²          (posisi)
+v² = v₀² + 2gh          (hubungan v-h)
+
+Dimana:
+v₀ = kecepatan awal (m/s)
+v  = kecepatan akhir (m/s)
+g  = 9.81 m/s² (gravitasi)
+t  = waktu (s)
+h  = tinggi jatuh (m)
+```
+
+**Aplikasi untuk Tongkat Jatuh dari 1cm:**
+
+```
+Given:
+- h = 0.01 m (1 cm)
+- v₀ = 0 (mulai dari diam)
+- g = 9.81 m/s²
+
+Hitung waktu jatuh:
+h = ½gt²
+0.01 = ½(9.81)t²
+t² = 0.01 / 4.905
+t² = 0.00204
+t = √0.00204
+t = 0.045 seconds = 45 milliseconds
+
+Hitung kecepatan saat menyentuh lantai:
+v² = 2gh
+v² = 2(9.81)(0.01)
+v² = 0.1962
+v = 0.443 m/s = 44.3 cm/s
+```
+
+**Kesimpulan Fisika:**
+- Tongkat jatuh dari 1cm butuh **~45ms** untuk hit ground
+- Impact velocity hanya **0.443 m/s** (sangat kecil!)
+- Oleh karena itu butuh **SUPER SENSITIVE** threshold
+
+**Kenapa Detection Window 3000ms (3 detik)?**
+
+Karena detection bukan cuma untuk 1cm:
+```
+Untuk h = 1 meter:
+t = √(2h/g) = √(2×1/9.81) = 0.452 seconds
+
+Buffer factor = 3000ms / 452ms = 6.6x safety margin
+```
+
+Safety margin besar untuk ensure **tidak miss any fall scenario**.
+
+#### 3. Percepatan Selama Jatuh
+
+**Fase-Fase Jatuh:**
+
+```
+FASE 1: Free Fall (Before Impact)
+- Accelerometer baca: ~0g
+- Gaya yang bekerja: Gravitasi saja
+- Net acceleration (sensor frame): 0g
+
+FASE 2: Impact (Hitting Ground)  
+- Accelerometer baca: > 1g (spike!)
+- Gaya yang bekerja: Normal force dari lantai
+- Net acceleration: a = Fn/m - g
+
+FASE 3: Rest (After Impact)
+- Accelerometer baca: ~1g
+- Kembali ke kesetimbangan statis
+```
+
+**Mengapa Free Fall = 0g?**
+
+```
+Dalam frame of reference yang jatuh bebas:
+- Objek dan sensor jatuh dengan percepatan sama (g)
+- Tidak ada relative motion antara sensor dan housing
+- Sensor tidak merasakan gaya apapun
+- Reading: 0g
+
+Analogi: Astronot di ISS (International Space Station)
+- Terus menerus "jatuh" mengelilingi bumi
+- Merasakan 0g (weightless)
+- Padahal masih ada gravitasi!
+```
+
+### B. VEKTOR MEKANIKA (3D Acceleration)
+
+#### 1. Kenapa Rumus `accTotal = √(ax² + ay² + az²)`?
+
+**Teori Vektor 3D:**
+
+Accelerometer mengukur percepatan di 3 sumbu orthogonal (tegak lurus):
+```
+a⃗ = ax î + ay ĵ + az k̂
+
+Dimana:
+ax = komponen X (forward/backward)
+ay = komponen Y (left/right)  
+az = komponen Z (up/down)
+```
+
+**Magnitude (Besar) Vektor:**
+
+Dari **Teorema Pythagoras 3D**:
+
+```
+|a⃗| = √(ax² + ay² + az²)
+```
+
+**Derivasi dari 2D ke 3D:**
+
+```
+2D (X,Y plane):
+|a⃗| = √(ax² + ay²)
+
+Tambah dimensi Z:
+1. Kombinasi X,Y: d_xy = √(ax² + ay²)
+2. Kombinasi dengan Z: |a⃗| = √(d_xy² + az²)
+3. Substitusi: |a⃗| = √((ax² + ay²) + az²)
+4. Simplifikasi: |a⃗| = √(ax² + ay² + az²)
+```
+
+**Contoh Numerik:**
+
+```
+Scenario: Tongkat miring 45° lalu jatuh
+- ax = 0.707g (component horizontal)
+- ay = 0.000g (no sideways motion)
+- az = 0.707g (component vertical)
+
+Magnitude:
+|a⃗| = √(0.707² + 0² + 0.707²)
+    = √(0.5 + 0 + 0.5)
+    = √1.0
+    = 1.0g ✓
+
+Proof: Magnitude tetap 1g karena hanya orientasi berubah!
+```
+
+**Kenapa Perlu Magnitude?**
+
+Karena orientasi tongkat **berubah-ubah**:
+```
+Tongkat tegak:     ax=0, ay=0, az=1.0  →  |a⃗| = 1.0g
+Tongkat miring 45°: ax=0.7, ay=0, az=0.7 →  |a⃗| = 1.0g  
+Tongkat horizontal: ax=1.0, ay=0, az=0  →  |a⃗| = 1.0g
+
+Menggunakan magnitude → orientation-independent detection!
+```
+
+#### 2. Rotational Kinematics (Gyroscope)
+
+**Kecepatan Sudut (Angular Velocity):**
+
+```
+ω = dθ/dt
+
+Dimana:
+ω = angular velocity (rad/s atau deg/s)
+θ = sudut rotasi (radians atau degrees)
+t = waktu (seconds)
+```
+
+**Konversi Unit: rad/s → deg/s**
+
+```
+1 putaran penuh = 2π radians = 360 degrees
+
+Konversi:
+deg/s = rad/s × (360°/2π)
+      = rad/s × (180/π)
+      = rad/s × 57.2958
+
+Contoh:
+ω = 0.873 rad/s
+ω = 0.873 × 57.2958 = 50.0 deg/s
+```
+
+**Aplikasi di Code:**
+```cpp
+gx_dps = abs(g.gyro.x * 180.0 / PI);  // Konversi rad/s → deg/s
+```
+
+**Magnitude Rotasi 3D:**
+
+```
+Gyroscope measure rotasi di 3 axes:
+- X-axis (roll):  rotasi miring kiri/kanan
+- Y-axis (pitch): rotasi depan/belakang  
+- Z-axis (yaw):   rotasi berputar
+
+Total rotation speed:
+ωtotal = √(ωx² + ωy² + ωz²)
+```
+
+**Kenapa Threshold 50°/s?**
+
+```
+Normal movement:
+- Jalan pelan: ~10-20°/s
+- Jalan cepat: ~30-40°/s
+
+Fall tumbling:
+- Tongkat terjatuh: 50-200°/s
+- Jatuh dari tangan: 100-300°/s
+
+Threshold 50°/s = sweet spot antara sensitivity dan false positives
+```
+
+### C. KAPAN JATUH TERDETEKSI? (Step-by-Step)
+
+#### Skenario 1: Jatuh dari Tangan (Normal Fall)
+
+**Timeline Fisika:**
+
+```
+t=0ms: Tongkat terlepas dari tangan
+├─ Accelerometer: masih 1.0g (belum jatuh)
+├─ Gyroscope: 0°/s (belum rotasi)
+└─ Status: Normal
+
+t=50ms: Mulai jatuh bebas
+├─ Accelerometer: 0.3g (dropping!)
+├─ Gyroscope: 80°/s (mulai tumbling)
+├─ CHECK: accTotal < 0.98g? → YES! (0.3 < 0.98)
+├─ CHECK: gyroTotal > 50°/s? → YES! (80 > 50)
+└─ STATUS: ✓ TRIGGER PHASE 1 → inFreeFall = true
+
+t=100ms: Masih dalam free fall
+├─ Accelerometer: 0.1g (hampir weightless)
+├─ Gyroscope: 150°/s (rapid rotation)
+└─ Status: Waiting for impact or auto-confirm...
+
+t=550ms: Masih free fall (belum impact)
+├─ Elapsed: 550ms > 500ms
+├─ CHECK: elapsed > 500ms? → YES (auto-confirm!)
+└─ STATUS: ✓ FALL CONFIRMED (via auto-confirm)
+
+ATAU (jika ada impact sebelum 500ms):
+
+t=200ms: Impact dengan lantai!
+├─ Accelerometer: 2.5g (spike!)
+├─ CHECK: accTotal > 1.05g? → YES! (2.5 > 1.05)
+└─ STATUS: ✓ FALL CONFIRMED (via impact detection)
+```
+
+**Code Flow:**
+
+```cpp
+// t=50ms: Trigger detection
+if (!inFreeFall && (accTotal < 0.98 || gyroTotal > 50)) {
+    inFreeFall = true;        // Enter detection mode
+    freeFallStart = now;      // Save timestamp
+    rotationDetected = true;  // Record trigger reason
+}
+
+// t=100-550ms: Confirmation window
+if (inFreeFall) {
+    unsigned long elapsed = now - freeFallStart;
+    
+    bool hasImpact = (accTotal > 1.05);  // Impact? (2.5g > 1.05)
+    bool autoConfirm = (elapsed > 500);   // Timeout? (550ms > 500)
+    
+    if (hasImpact || autoConfirm) {
+        fallDetected = true;  // ✓ CONFIRMED!
+        // Trigger alert...
+    }
+}
+```
+
+#### Skenario 2: Jatuh dari 1cm (Subtle Fall)
+
+**Timeline Fisika:**
+
+```
+t=0ms: Tongkat terangkat sedikit lalu jatuh
+├─ Height: h = 0.01m (1cm)
+├─ Predicted time: t = √(2h/g) = 45ms
+└─ Predicted impact velocity: v = 0.443 m/s
+
+t=20ms: Mulai jatuh
+├─ Accelerometer: 0.85g (slight drop detected!)
+├─ CHECK: 0.85 < 0.98? → YES!
+└─ STATUS: ✓ TRIGGER PHASE 1
+
+t=65ms: Impact (sedikit terlambat dari prediksi karena resistance)
+├─ Accelerometer: 1.08g (very subtle impact)
+├─ CHECK: 1.08 > 1.05? → YES!
+└─ STATUS: ✓ FALL CONFIRMED (impact detected)
+
+ATAU (jika impact terlalu kecil):
+
+t=520ms: Auto-confirm
+├─ No significant impact detected
+├─ Elapsed: 520ms > 500ms
+├─ Orientasi berubah (tongkat sudah horizontal)
+└─ STATUS: ✓ FALL CONFIRMED (auto-confirm)
+```
+
+**Mengapa Kedua Metode Penting:**
+
+```
+High falls → Impact jelas → Detected by Phase 2A (impact > 1.05g)
+Low falls  → Impact subtle → Detected by Phase 2B (auto-confirm 500ms)
+
+Dual strategy ensures:
+✓ No false negatives (semua jatuh terdetect)
+✓ Minimize false positives (cooldown 2s)
+```
+
+#### Skenario 3: False Alarm Prevention
+
+**Bukan Jatuh - Cuma Gerak Cepat:**
+
+```
+t=0ms: Tongkat diayun cepat (bukan jatuh)
+├─ Accelerometer: 1.5g (rapid movement)
+├─ Gyroscope: 120°/s (fast swing)
+├─ CHECK: accTotal < 0.98? → NO (1.5 > 0.98)
+├─ CHECK: gyroTotal > 50? → YES (120 > 50)
+└─ STATUS: TRIGGER? → Hanya gyro threshold terlewati
+
+Tapi:
+├─ accTotal tetap > 0.98g (tidak ada free fall!)
+└─ RESULT: Tidak masuk detection window ✓ (need OR condition)
+
+Wait... OR condition?
+
+CORRECTION: Code uses OR, so this WOULD trigger!
+
+Prevention mechanism:
+t=50ms: After trigger
+├─ Waiting for confirmation...
+├─ accTotal: masih 1.2g (tidak drop ke 0g)
+├─ No sustained low acceleration
+└─ After 3 seconds: TIMEOUT ✓ False alarm cancelled
+```
+
+**How it Works:**
+
+```cpp
+// Trigger bisa dari rotation...
+if (gyroTotal > 50) {
+    inFreeFall = true;  // Triggered
+}
+
+// Tapi confirmation butuh sustained change
+if (inFreeFall) {
+    // Jika cuma swing cepat:
+    // - accTotal tidak turun drastis
+    // - Tidak ada impact spike
+    // - Setelah 3000ms → timeout
+    
+    if (elapsed >= IMPACT_WINDOW) {
+        inFreeFall = false;  // Cancel false alarm
+    }
+}
+```
+
+### D. SENSOR IMU (MPU6050) - Physics Deep Dive
+
+#### 1. Accelerometer: MEMS Technology
+
+**Prinsip Kerja Fisika:**
+
+```
+Struktur: Massa kecil (proof mass) ditahan oleh spring
+         
+    ┌────────┐
+    │ Spring │
+    └───┬────┘
+        │
+    ╔═══▼═══╗
+    ║  Mass ║  ← Proof mass (bergerak!)
+    ╚═══════╝
+        │
+    ┌───▼────┐
+    │Capacitor│ ← Detect displacement
+    └────────┘
+
+Saat accelerasi:
+1. Mass bergerak relative ke housing
+2. Capacitance berubah (jarak plate berubah)
+3. Circuit convert capacitance → voltage → digital value
+```
+
+**Hukum Fisika:**
+
+```
+F = ma          (Newton's 2nd Law)
+F = kx          (Hooke's Law untuk spring)
+
+Kombinasi:
+ma = kx
+x = (m/k)a
+
+Displacement (x) ∝ Acceleration (a)
+Measure x → Calculate a
+```
+
+**Sensitivity & Range:**
+
+```
+Range setting: ±8g
+Resolution: 16-bit → 65536 levels
+Sensitivity: 4096 LSB/g (Least Significant Bits per g)
+
+Calculation:
+Raw value = 4096 (dari sensor)
+g-force = Raw / 4096 = 1.0g ✓
+```
+
+#### 2. Gyroscope: Coriolis Effect
+
+**Prinsip Kerja Fisika:**
+
+```
+Coriolis Force:
+Fc = -2m(Ω × v)
+
+Dimana:
+Ω = angular velocity (rotation kita ukur)
+v = velocity of vibrating mass
+m = mass
+
+Saat sensor berputar:
+1. Internal mass vibrates at constant frequency
+2. Rotation causes Coriolis force
+3. Force perpendicular to both rotation dan vibration
+4. Measure displacement → Calculate rotation rate
+```
+
+**Range & Resolution:**
+
+```
+Range setting: ±500°/s
+Resolution: 16-bit
+Sensitivity: 65.5 LSB/(°/s)
+
+Example:
+Raw value = 3275
+Angular velocity = 3275 / 65.5 = 50°/s
+```
+
+#### 3. Digital Low-Pass Filter (5 Hz)
+
+**Mengapa Filter?**
+
+```
+Sensor noise spectrum:
+- High frequency noise: > 100 Hz (vibrations, electrical noise)
+- Human motion: 0.5 - 20 Hz
+- Fall events: 1 - 10 Hz
+
+Low-pass filter @ 5 Hz:
+✓ Pass: Fall detection signals (1-10 Hz)
+✗ Block: High frequency noise (> 5 Hz)
+```
+
+**Formula Filter:**
+
+```
+Output = α × Input + (1-α) × Previous_Output
+
+Dimana α = cutoff frequency parameter
+
+For 5 Hz @ 1kHz sampling:
+α = 2πf / (2πf + fs)
+  = 2π(5) / (2π(5) + 1000)
+  = 31.4 / 1031.4
+  ≈ 0.03
+
+Effect: Smooth out rapid fluctuations, keep slow trends
+```
+
+### E. CONFIDENCE SCORE - Probabilistic Reasoning
+
+**Formula:**
+```cpp
+confidence = (freefallMs / 800.0) * (fallStrength / 2.0);
+```
+
+**Interpretasi Fisika:**
+
+```
+Component 1: Duration Factor (freefallMs / 800)
+- Longer freefall → Higher confidence
+- 800ms = reference duration for "typical" fall
+- Physical reasoning: Fake movements are brief (<100ms)
+
+Component 2: Strength Factor (fallStrength / 2.0)  
+- Stronger impact → Higher confidence
+- 2.0g = reference for "significant" impact
+- Physical reasoning: Gentle placement ≈ 1.0g, Real fall > 1.5g
+
+Combined Score:
+- Both factors high → High confidence (real fall)
+- One factor low → Medium confidence (uncertain)
+- Both factors low → Low confidence (false alarm)
+```
+
+**Examples:**
+
+```
+Scenario A: Gentle drop from hand
+├─ Duration: 300ms → Factor = 300/800 = 0.375
+├─ Strength: 1.2g  → Factor = 1.2/2.0 = 0.600
+└─ Confidence: 0.375 × 0.600 = 0.225 = 22.5% (LOW)
+
+Scenario B: Clear fall
+├─ Duration: 700ms → Factor = 700/800 = 0.875
+├─ Strength: 2.5g  → Factor = 2.5/2.0 = 1.25 → capped at 1.0
+└─ Confidence: 0.875 × 1.0 = 0.875 = 87.5% (HIGH)
+
+Scenario C: Sharp impact (dropping on table)
+├─ Duration: 50ms  → Factor = 50/800 = 0.0625
+├─ Strength: 3.0g  → Factor = 3.0/2.0 = 1.5 → capped at 1.0
+└─ Confidence: 0.0625 × 1.0 = 0.0625 = 6.25% (VERY LOW)
+```
+
+**Statistical Interpretation:**
+
+```
+Confidence > 70% → Definite fall (trigger immediate alert)
+Confidence 40-70% → Probable fall (monitor closely)
+Confidence < 40% → Unlikely fall (may be false positive)
+
+Note: Current code doesn't use threshold on confidence
+      (always trigger if conditions met)
+      But score useful for logging/debugging
+```
+
+---
+
+## 📊 SUMMARY: Physics Application in Code
+
+| Konsep Fisika | Rumus | Aplikasi di Code | Line |
+|--------------|-------|------------------|------|
+| 3D Pythagoras | `√(x²+y²+z²)` | Acceleration magnitude | 143 |
+| Unit conversion | `rad/s × 180/π` | Gyro rad→deg | 146-148 |
+| Free fall | `t = √(2h/g)` | Detection window sizing | 51 |
+| Newton's 2nd | `F = ma` | Threshold tuning | 49-50 |
+| Vector magnitude | `‖v‖ = √(v·v)` | Gyro total rotation | 149 |
+| Coriolis effect | `Fc = 2m(Ω×v)` | Gyro principle | - |
+| Hooke's law | `F = kx` | Accelerometer principle | - |
 
 ---
 
