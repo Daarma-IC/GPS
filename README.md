@@ -2907,7 +2907,3 @@ Project ini **bukan copy-paste** karena:
 - ✅ Real-world testing dan iteration (1cm height sensitivity)
 
 ---
-
-**Developed by**: [Your Name]  
-**Date**: December 2025  
-**Platform**: ESP32 + GPS Neo M10 + MPU6050
