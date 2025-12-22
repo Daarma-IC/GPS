@@ -4,8 +4,8 @@ import React from 'react';
 function GpsCard({ data, lastFix }) {
   // posisi default (tengah Indonesia)
   const defaultCenter = {
-    latitude: -2.5,
-    longitude: 118.0,
+    latitude: -6.979584,
+    longitude: 107.6333703,
   };
 
   const hasFixNow =

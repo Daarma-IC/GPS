@@ -4,26 +4,8 @@ function Footer() {
   return (
     <footer className="footer">
       <p className="footer-text">
-        Kelompok Bu Nendi
+        &copy; {new Date().getFullYear()} GPS Tracker by Kelompok Nusa Mesh Team
       </p>
-      <div className="footer-links">
-        <a
-          href="https://github.com"
-          target="_blank"
-          rel="noreferrer"
-          className="footer-link"
-        >
-          GitHub
-        </a>
-        <a
-          href="https://docs.example.com"
-          target="_blank"
-          rel="noreferrer"
-          className="footer-link"
-        >
-          Documentation
-        </a>
-      </div>
     </footer>
   );
 }

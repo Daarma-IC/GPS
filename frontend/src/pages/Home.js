@@ -4,10 +4,13 @@ import {
   MapContainer,
   TileLayer,
   CircleMarker,
+  Marker,
   Popup,
   Pane,
   useMap,
 } from "react-leaflet";
+import { Activity, Satellite, MapPin, Clock, AlertTriangle, Eye, EyeOff, Navigation } from "lucide-react";
+import { renderToStaticMarkup } from "react-dom/server";
 import L from "leaflet";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
@@ -24,7 +27,7 @@ L.Icon.Default.mergeOptions({
 // ========================
 const WS_URL = `ws://${window.location.hostname}:8081`; // Changed from 8080 to 8081
 
-const DEFAULT_CENTER = { lat: -2.5, lng: 118.0 };
+const DEFAULT_CENTER = { lat: -6.979584, lng: 107.6333703 };
 
 // Component to auto-center map when GPS location is detected
 function MapUpdater({ center }) {
@@ -47,6 +50,7 @@ function Home() {
   const [gpsData, setGpsData] = useState(null);
   const [lastFix, setLastFix] = useState(null);
   const [wsStatus, setWsStatus] = useState("DISCONNECTED");
+  const [showHud, setShowHud] = useState(true); // Default to showing HUD
 
   const [fallEvents, setFallEvents] = useState([]);
   const lastFallIdRef = useRef(null);
@@ -202,6 +206,27 @@ function Home() {
       ? lastFix.longitude.toFixed(6)
       : "-";
 
+  // Create custom "Google Maps" Style Icon (Blue Dot)
+  const hackerIcon = L.divIcon({
+    className: "custom-map-icon",
+    html: renderToStaticMarkup(
+      <div style={{
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '24px',
+        height: '24px',
+      }}>
+        <div className="google-marker-pulse" />
+        <div className="google-marker-dot" />
+      </div>
+    ),
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -12],
+  });
+
   return (
     <div className="mp-root">
       <div className="mp-layout">
@@ -211,7 +236,7 @@ function Home() {
 
           <div className="mp-panel">
             <div className="mp-panel-header">
-              <span className="panel-icon">🔌</span> Connection
+              <Activity size={16} className="panel-icon-svg" /> Connection
             </div>
             <div className="mp-panel-body">
               <div className={`mp-badge mp-badge-${wsStatus.toLowerCase()}`}>
@@ -223,7 +248,7 @@ function Home() {
 
           <div className="mp-panel">
             <div className="mp-panel-header">
-              <span className="panel-icon">🛰️</span> GPS Status
+              <Satellite size={16} className="panel-icon-svg" /> GPS Status
             </div>
             <div className="mp-panel-body mp-grid">
               <div>
@@ -243,7 +268,7 @@ function Home() {
 
           <div className="mp-panel">
             <div className="mp-panel-header">
-              <span className="panel-icon">📍</span> Coordinates
+              <MapPin size={16} className="panel-icon-svg" /> Coordinates
             </div>
             <div className="mp-panel-body mp-grid">
               <div>
@@ -259,7 +284,7 @@ function Home() {
 
           <div className="mp-panel">
             <div className="mp-panel-header">
-              <span className="panel-icon">⏱️</span> Last Update
+              <Clock size={16} className="panel-icon-svg" /> Last Update
             </div>
             <div className="mp-panel-body">
               <div className="mp-status-text">
@@ -270,7 +295,7 @@ function Home() {
 
           <div className="mp-panel">
             <div className="mp-panel-header">
-              <span className="panel-icon">🚨</span> Fall Alerts
+              <AlertTriangle size={16} className="panel-icon-svg" /> Fall Alerts
             </div>
             <div className="mp-panel-body">
               <div className="fall-alerts-scroll">
@@ -282,7 +307,9 @@ function Home() {
                   return (
                     <div key={ev.id} className={`alert-item ${!isRecent ? 'alert-old' : ''}`}>
                       <div className="alert-flex-container">
-                        <span>🚨 JATUH TERDETEKSI</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <AlertTriangle size={14} /> JATUH TERDETEKSI
+                        </span>
                         {isRecent && <span className="mp-badge mp-badge-error alert-badge-new">BARU</span>}
                       </div>
                       <div className="small">
@@ -295,19 +322,23 @@ function Home() {
                 })}
               </div>
             </div>
-          </div>
-        </aside>
+          </div >
+        </aside >
 
         {/* MAP AREA */}
-        <main className="mp-main">
+        < main className="mp-main" >
           <div className="mp-toolbar">
             <div className="mp-toolbar-left">
-              <span className="mp-title">Data GPS</span>
-              <span className="mp-subtitle">
-                {hasFixNow ? "Live Position" : "Waiting for Fix"}
-              </span>
+              <span className="mp-title">Map Tracker</span>
             </div>
             <div className="mp-toolbar-right">
+              <button
+                className="mp-btn-icon"
+                onClick={() => setShowHud(!showHud)}
+                title={showHud ? "Hide HUD" : "Show HUD"}
+              >
+                {showHud ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
               <span className="mp-chip">
                 Center: {center.lat.toFixed(5)}, {center.lng.toFixed(5)}
               </span>
@@ -360,7 +391,10 @@ function Home() {
                         }}
                       >
                         <Popup>
-                          <strong>🚨 JATUH TERDETEKSI</strong><br />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <AlertTriangle size={14} color="#ef4444" />
+                            <strong>JATUH TERDETEKSI</strong>
+                          </div>
                           Waktu: {new Date(ev.ts).toLocaleTimeString()}<br />
                           {/* {ev.strength && `Kekuatan: ${ev.strength}g`} */}
                         </Popup>
@@ -372,56 +406,59 @@ function Home() {
 
               <Pane name="livePane">
                 {(hasFixNow || lastFix) && (
-                  <CircleMarker
-                    center={[center.lat, center.lng]}
-                    radius={7}
-                    pathOptions={{ className: "live-dot" }}
+                  <Marker
+                    position={[center.lat, center.lng]}
+                    icon={hackerIcon}
                   >
                     <Popup>
-                      Posisi sekarang <br />
-                      Lat: {currentLat} <br />
-                      Lng: {currentLng}
+                      <div style={{ textAlign: 'center' }}>
+                        <strong>LIVE TRACKER</strong><br />
+                        Lat: {currentLat} <br />
+                        Lng: {currentLng}
+                      </div>
                     </Popup>
-                  </CircleMarker>
+                  </Marker>
                 )}
               </Pane>
             </MapContainer>
 
-            <div className="mp-hud">
-              <div className="mp-hud-card">
-                <div className="mp-hud-row">
-                  <span className="mp-hud-title">INFORMATION</span>
-                  <span
-                    className={
-                      hasFixNow
-                        ? "mp-hud-pill mp-hud-pill-fix"
-                        : "mp-hud-pill mp-hud-pill-nofix"
-                    }
-                  >
-                    {hasFixNow ? "FIX" : "NO FIX"}
-                  </span>
-                </div>
+            {showHud && (
+              <div className="mp-hud">
+                <div className="mp-hud-card">
+                  <div className="mp-hud-row">
+                    <span className="mp-hud-title">INFORMATION</span>
+                    <span
+                      className={
+                        hasFixNow
+                          ? "mp-hud-pill mp-hud-pill-fix"
+                          : "mp-hud-pill mp-hud-pill-nofix"
+                      }
+                    >
+                      {hasFixNow ? "FIX" : "NO FIX"}
+                    </span>
+                  </div>
 
-                <div className="mp-hud-grid">
-                  <div>
-                    <span className="mp-label">Sat</span>
-                    <span className="mp-value">{sats}</span>
-                  </div>
-                  <div>
-                    <span className="mp-label">Quality</span>
-                    <span className="mp-value">{fixQuality}</span>
-                  </div>
-                  <div>
-                    <span className="mp-label">Lat</span>
-                    <span className="mp-value-small">{currentLat}</span>
-                  </div>
-                  <div>
-                    <span className="mp-label">Lng</span>
-                    <span className="mp-value-small">{currentLng}</span>
+                  <div className="mp-hud-grid">
+                    <div>
+                      <span className="mp-label">Sat</span>
+                      <span className="mp-value">{sats}</span>
+                    </div>
+                    <div>
+                      <span className="mp-label">Quality</span>
+                      <span className="mp-value">{fixQuality}</span>
+                    </div>
+                    <div>
+                      <span className="mp-label">Lat</span>
+                      <span className="mp-value-small">{currentLat}</span>
+                    </div>
+                    <div>
+                      <span className="mp-label">Lng</span>
+                      <span className="mp-value-small">{currentLng}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="mp-statusbar">
@@ -436,9 +473,9 @@ function Home() {
               Buka di Google Maps
             </a>
           </div>
-        </main>
-      </div>
-    </div>
+        </main >
+      </div >
+    </div >
   );
 }
 

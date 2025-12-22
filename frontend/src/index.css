@@ -1,10 +1,14 @@
 :root {
-  --color-primary: #06b6d4;
-  --color-primary-light: #22d3ee;
-  --color-secondary: #14b8a6;
-  --color-success: #34d399;
-  --color-danger: #f87171;
-  --color-warning: #fbbf24;
+  --color-primary: #00ff00;       /* Neon Green */
+  --color-primary-light: #39ff14; /* Bright Neon Green */
+  --color-secondary: #0f0;        /* Matrix Green */
+  --color-success: #00ff00;
+  --color-danger: #ff0000;
+  --color-warning: #ffff00;
+  --color-bg-dark: #000000;
+  --color-bg-panel: #050505;
+  --color-text-main: #00ff00;
+  --color-text-muted: #00aa00;
 }
 
 * {
@@ -20,7 +24,8 @@ html {
 body {
   margin: 0;
   padding: 0;
-  background-color: #020617;
+  background-color: var(--color-bg-dark);
+  color: var(--color-text-main);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

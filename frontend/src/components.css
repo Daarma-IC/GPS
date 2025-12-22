@@ -7,11 +7,10 @@
 /* ================== */
 
 .header {
-    background: linear-gradient(90deg, rgba(15, 31, 15, 0.95) 0%, rgba(20, 41, 20, 0.9) 50%, rgba(15, 31, 15, 0.95) 100%);
-    border-bottom: 1px solid rgba(132, 204, 22, 0.15);
+    background-color: #000;
+    border-bottom: 1px solid #00ff00;
     padding: 16px 24px;
-    backdrop-filter: blur(20px);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 16px rgba(0, 255, 0, 0.1);
 }
 
 .header-content {
@@ -24,10 +23,8 @@
     margin: 0;
     font-size: 1.5rem;
     font-weight: 700;
-    background: linear-gradient(135deg, #84cc16 0%, #22c55e 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: #00ff00;
+    text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
     letter-spacing: -0.02em;
 }
 
@@ -36,15 +33,14 @@
 /* ================== */
 
 .footer {
-    background: linear-gradient(90deg, rgba(15, 31, 15, 0.95) 0%, rgba(20, 41, 20, 0.9) 50%, rgba(15, 31, 15, 0.95) 100%);
-    border-top: 1px solid rgba(132, 204, 22, 0.15);
+    background-color: #000;
+    border-top: 1px solid #00ff00;
     padding: 12px 24px;
-    backdrop-filter: blur(10px);
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     font-size: 0.85rem;
-    color: #94a3b8;
+    color: #00aa00;
 }
 
 .footer-text {
@@ -58,14 +54,15 @@
 }
 
 .footer-link {
-    color: #4ade80;
+    color: #00ff00;
     text-decoration: none;
     font-weight: 600;
-    transition: color 0.3s ease;
+    transition: all 0.3s ease;
 }
 
 .footer-link:hover {
-    color: #6ee7b7;
+    color: #39ff14;
+    text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
 }
 
 /* ================== */

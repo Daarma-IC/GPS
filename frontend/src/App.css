@@ -16,11 +16,18 @@ body,
 }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background: radial-gradient(circle at 20% 10%, #1a2e1a 0%, #0f1f0f 40%, #061706 70%, #000 100%);
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  /* Hacker font */
+  background-color: #000000;
+  background-image:
+    linear-gradient(rgba(0, 255, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 0, 0.03) 1px, transparent 1px);
+  background-size: 20px 20px;
+  /* Grid effect */
   background-attachment: fixed;
-  color: #f1f5f9;
-  -webkit-font-smoothing: antialiased;
+  color: #00ff00;
+  -webkit-font-smoothing: none;
+  /* Sharper text */
 }
 
 .App {
@@ -42,15 +49,16 @@ body {
 
 .mp-sidebar {
   width: 300px;
-  background: linear-gradient(180deg, rgba(15, 31, 15, 0.95) 0%, rgba(6, 23, 6, 0.98) 100%);
-  border-right: 1px solid rgba(132, 204, 22, 0.15);
+  background-color: rgba(0, 0, 0, 0.95);
+  border-right: 1px solid #00ff00;
   padding: 20px 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(5px);
   overflow-y: auto;
   overflow-x: hidden;
+  box-shadow: 2px 0 10px rgba(0, 255, 0, 0.1);
 }
 
 .mp-sidebar-title {
@@ -59,37 +67,46 @@ body {
   font-weight: 700;
   letter-spacing: 0.15em;
   text-transform: uppercase;
-  background: linear-gradient(135deg, #84cc16 0%, #22c55e 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #00ff00;
+  text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+  border-bottom: 1px solid #003300;
+  padding-bottom: 4px;
 }
 
 .mp-panel {
-  background: linear-gradient(135deg, rgba(20, 41, 20, 0.6) 0%, rgba(10, 23, 10, 0.8) 100%);
-  border-radius: 16px;
-  border: 1px solid rgba(132, 204, 22, 0.15);
+  background-color: rgba(5, 5, 5, 0.9);
+  border-radius: 4px;
+  /* Less rounded */
+  border: 1px solid #00ff00;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(10px);
-  transition: all 0.3s ease;
+  box-shadow: 0 0 5px rgba(0, 255, 0, 0.2);
+  backdrop-filter: none;
+  transition: all 0.2s ease;
 }
 
 .mp-panel:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  border-color: rgba(132, 204, 22, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.4);
+  border-color: #39ff14;
 }
 
 .mp-panel-header {
-  padding: 10px 14px;
+  padding: 8px 12px;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  background: linear-gradient(90deg, rgba(20, 41, 20, 0.95) 0%, rgba(10, 23, 10, 0.95) 100%);
-  border-bottom: 1px solid rgba(132, 204, 22, 0.1);
-  color: #cbd5e1;
+  background-color: #001100;
+  border-bottom: 1px solid #00ff00;
+  color: #00ff00;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-icon-svg {
+  color: #00ff00;
+  filter: drop-shadow(0 0 2px rgba(0, 255, 0, 0.5));
 }
 
 .mp-panel-body {
@@ -106,7 +123,7 @@ body {
 .mp-label {
   display: block;
   font-size: 0.7rem;
-  color: #94a3b8;
+  color: #00aa00;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 4px;
@@ -117,19 +134,20 @@ body {
   font-family: 'JetBrains Mono', monospace;
   font-size: 1rem;
   font-weight: 600;
-  color: #f1f5f9;
+  color: #00ff00;
+  text-shadow: 0 0 2px rgba(0, 255, 0, 0.5);
 }
 
 .mp-value-small {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.8rem;
   font-weight: 500;
-  color: #e2e8f0;
+  color: #00cc00;
 }
 
 .mp-status-text {
   font-size: 0.85rem;
-  color: #e2e8f0;
+  color: #00cc00;
   line-height: 1.5;
 }
 
@@ -137,7 +155,7 @@ body {
   display: inline-flex;
   align-items: center;
   padding: 6px 14px;
-  border-radius: 999px;
+  border-radius: 2px;
   font-size: 0.7rem;
   font-weight: 700;
   margin-bottom: 8px;
@@ -147,31 +165,31 @@ body {
 }
 
 .mp-badge-connected {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.25) 0%, rgba(16, 185, 129, 0.15) 100%);
-  color: #6ee7b7;
-  border: 1px solid rgba(52, 211, 153, 0.6);
-  box-shadow: 0 0 20px rgba(52, 211, 153, 0.4);
+  background-color: #002200;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  box-shadow: 0 0 5px rgba(0, 255, 0, 0.4);
 }
 
 .mp-badge-disconnected {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(220, 38, 38, 0.15) 100%);
-  color: #fca5a5;
-  border: 1px solid rgba(248, 113, 113, 0.6);
-  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+  background-color: #220000;
+  color: #ff0000;
+  border: 1px solid #ff0000;
+  box-shadow: 0 0 5px rgba(255, 0, 0, 0.4);
 }
 
 .mp-badge-error {
-  background: linear-gradient(135deg, rgba(251, 146, 60, 0.25) 0%, rgba(249, 115, 22, 0.15) 100%);
-  color: #fdba74;
-  border: 1px solid rgba(251, 146, 60, 0.6);
-  box-shadow: 0 0 20px rgba(249, 115, 22, 0.3);
+  background-color: #222200;
+  color: #ffff00;
+  border: 1px solid #ffff00;
+  box-shadow: 0 0 5px rgba(255, 255, 0, 0.4);
 }
 
 .mp-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: radial-gradient(circle at 80% 20%, rgba(20, 41, 20, 0.3) 0%, rgba(6, 23, 6, 0.95) 60%);
+  background-color: #000;
   min-width: 0;
 }
 
@@ -181,10 +199,9 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: linear-gradient(90deg, rgba(15, 31, 15, 0.95) 0%, rgba(20, 41, 20, 0.9) 50%, rgba(15, 31, 15, 0.95) 100%);
-  border-bottom: 1px solid rgba(132, 204, 22, 0.15);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  background-color: #000;
+  border-bottom: 1px solid #00ff00;
+  box-shadow: 0 2px 10px rgba(0, 255, 0, 0.1);
 }
 
 .mp-toolbar-left {
@@ -196,13 +213,14 @@ body {
 .mp-title {
   font-size: 1.125rem;
   font-weight: 700;
-  color: #4ade80;
+  color: #00ff00;
   letter-spacing: -0.02em;
+  text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
 }
 
 .mp-subtitle {
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: #00aa00;
   font-weight: 500;
 }
 
@@ -212,24 +230,39 @@ body {
   align-items: center;
 }
 
+.mp-btn-icon {
+  background: transparent;
+  border: 1px solid #00ff00;
+  color: #00ff00;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.mp-btn-icon:hover {
+  background-color: #003300;
+  box-shadow: 0 0 8px rgba(0, 255, 0, 0.4);
+}
+
 .mp-chip {
-  border-radius: 999px;
-  border: 1px solid rgba(132, 204, 22, 0.2);
+  border-radius: 2px;
+  border: 1px solid #00ff00;
   padding: 6px 14px;
   font-size: 0.75rem;
   font-family: 'JetBrains Mono', monospace;
-  color: #e2e8f0;
-  background: linear-gradient(135deg, rgba(20, 41, 20, 0.8) 0%, rgba(10, 23, 10, 0.9) 100%);
-  backdrop-filter: blur(10px);
-  transition: all 0.3s ease;
+  color: #00ff00;
+  background-color: #002200;
   font-weight: 500;
 }
 
 .mp-chip:hover {
-  border-color: rgba(132, 204, 22, 0.4);
-  background: linear-gradient(135deg, rgba(20, 41, 20, 0.95) 0%, rgba(10, 23, 10, 1) 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border-color: #39ff14;
+  background-color: #003300;
+  box-shadow: 0 0 8px rgba(0, 255, 0, 0.3);
 }
 
 .mp-map-wrapper {
@@ -259,19 +292,19 @@ body {
 .mp-hud-card {
   pointer-events: auto;
   min-width: 260px;
-  background: linear-gradient(135deg, rgba(15, 31, 15, 0.92) 0%, rgba(6, 23, 6, 0.95) 100%);
-  border-radius: 20px;
+  background-color: rgba(0, 0, 0, 0.9);
+  border-radius: 4px;
   padding: 16px 18px;
-  border: 1px solid rgba(132, 204, 22, 0.2);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(20px);
+  border: 1px solid #00ff00;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.1);
+  backdrop-filter: blur(5px);
   transition: all 0.3s ease;
 }
 
 .mp-hud-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
-  border-color: rgba(132, 204, 22, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+  border-color: #39ff14;
 }
 
 .mp-hud-row {
@@ -328,22 +361,22 @@ body {
   justify-content: space-between;
   padding: 0 20px;
   font-size: 0.8rem;
-  background: linear-gradient(90deg, rgba(6, 23, 6, 0.98) 0%, rgba(15, 31, 15, 0.95) 50%, rgba(6, 23, 6, 0.98) 100%);
-  border-top: 1px solid rgba(132, 204, 22, 0.15);
-  color: #94a3b8;
-  backdrop-filter: blur(10px);
+  background-color: #000;
+  border-top: 1px solid #00ff00;
+  color: #00aa00;
   font-weight: 500;
 }
 
 .mp-statusbar a {
-  color: #84cc16;
+  color: #00ff00;
   text-decoration: none;
   font-weight: 600;
   transition: all 0.3s ease;
 }
 
 .mp-statusbar a:hover {
-  color: #a3e635;
+  color: #39ff14;
+  text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
 }
 
 @media (max-width: 900px) {
@@ -599,6 +632,73 @@ body {
   fill: rgba(51, 0, 255, 0.9);
   filter: drop-shadow(0 0 10px rgba(132, 204, 22, 1));
   z-index: 10;
+}
+
+/* Google Maps Style Marker */
+.custom-map-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+.google-marker-dot {
+  width: 16px;
+  height: 16px;
+  background-color: #4285F4;
+  /* Google Blue */
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  z-index: 2;
+}
+
+.google-marker-pulse {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  background-color: rgba(66, 133, 244, 0.4);
+  border-radius: 50%;
+  z-index: 1;
+  animation: googlePulse 2s infinite;
+}
+
+@keyframes googlePulse {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.8;
+  }
+
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.hacker-marker-glow {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(0, 255, 0, 0.4);
+  filter: blur(8px);
+  z-index: -1;
+  animation: markerPulse 2s infinite;
+}
+
+@keyframes markerPulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+
+  50% {
+    transform: scale(1.5);
+    opacity: 0.4;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
 }
 
 /* Radar-style wave animation for fall detection */
