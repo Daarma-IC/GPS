@@ -7,14 +7,14 @@
 #include <WiFiClientSecure.h>
 
 // ================= WIFI =================
-const char* ssid       = "Rendem";
-const char* password   = "hackathon!212";
-const char* serverUrl  = "https://nonaffinitive-cablelaid-kara.ngrok-free.dev/gps";
+const char* namaSsid       = "Kosan Pa Nendi lt2";
+const char* kataSandi      = "GBABlok05";
+const char* urlServer      = "https://nonaffinitive-cablelaid-kara.ngrok-free.dev/gps";
 
 // ================= FONNTE =================
-const char* FONNTE_TOKEN = "h2gbzah52g1PaioGUnDs";
-String API_URL =
-  "https://api.fonnte.com/send?token=" + String(FONNTE_TOKEN) +
+const char* TOKEN_FONNTE = "h2gbzah52g1PaioGUnDs";
+String URL_API =
+  "https://api.fonnte.com/send?token=" + String(TOKEN_FONNTE) +
   "&target=6289513829923&message=PERINGATAN!%20Jatuh%20dideteksi.";
 
 // ================= GPS (UART2) =================
@@ -24,19 +24,19 @@ static const int GPS_RX_PIN = 16; // RX ESP32 <- TX GPS M10
 static const int GPS_TX_PIN = 17; // TX ESP32 -> RX GPS (opsional)
 static const int GPS_BAUD   = 38400;
 
-// UART health
+// Kesehatan UART
 bool uartOk = false;
-unsigned long lastNmeaMillis = 0;
-const unsigned long uartTimeout = 3000;
+long milisTerakhirNmea = 0;
+const long waktuHabisUart = 3000;
 
-// last valid fix cache (buat posisi event jatuh)
-bool lastFixValid = false;
-double lastLat = 0, lastLng = 0;
-uint32_t lastSat = 0;
-unsigned long lastFixAt = 0;
+// Cache lokasi valid terakhir (buat posisi event jatuh)
+bool lokasiTerakhirValid = false;
+double lintangTerakhir = 0, bujurTerakhir = 0;
+int satelitTerakhir = 0;
+long waktuLokasiTerakhir = 0;
 
 // ================= IMU (I2C) =================
-static const int MPU_SDA_PIN = 21;  // I2C SDA pin (default ESP32)
+static const int MPU_SDA_PIN = 19;  // I2C SDA pin (default ESP32)
 static const int MPU_SCL_PIN = 22;  // I2C SCL pin (default ESP32)
 // Alternative pins: SDA=23, SCL=19 or SDA=25, SCL=26 or any GPIO
 
@@ -44,200 +44,200 @@ static const int MPU_SCL_PIN = 22;  // I2C SCL pin (default ESP32)
 Adafruit_MPU6050 mpu;
 bool imuOk = false;
 
-// Threshold SUPER SENSITIF untuk tongkat jatuh 1cm (hampir tidak ada impact)
-// Strategi: Deteksi ORIENTASI BERUBAH (gyroscope) atau GERAKAN APAPUN
-const float FALL_THR_LOW = 0.98;           // Gerakan kecil < 0.98g
-const float IMPACT_THR   = 1.05;           // Impact sangat ringan > 1.05g  
-const unsigned long IMPACT_WINDOW = 3000;  // 3 detik window (sangat lama)
-const unsigned long fallCooldown = 2000;   // 2 detik cooldown
-const float GYRO_ROTATION_THR = 50.0;      // Rotasi > 50°/s (SANGAT SENSITIF)
+// Threshold BALANCED untuk deteksi jatuh yang lebih stabil
+// Strategi: Deteksi jatuh signifikan dengan gerakan/rotasi yang jelas
+const float AMBANG_JATUH_RENDAH = 0.85;           // Gerakan signifikan < 0.85g
+const float AMBANG_BENTURAN     = 1.3;            // Impact sedang > 1.3g  
+const long JENDELA_BENTURAN = 3500;      // 3.5 detik window
+const long waktuJedaJatuh = 4000;        // 4 detik cooldown
+const float AMBANG_ROTASI_GYRO = 120.0;           // Rotasi > 120°/s (lebih stabil)
 
-bool inFreeFall = false;
-unsigned long freeFallStart = 0;
+bool sedangJatuhBebas = false;
+long waktuMulaiJatuhBebas = 0;
 
-// event vars
-bool fallDetected = false;
-float fallStrength = 0.0;
-float fallConfidence = 0.0;
-unsigned long freefallMs = 0;
-uint32_t fallId = 0;
-unsigned long lastFallAt = 0;
+// variabel event
+bool jatuhTerdeteksi = false;
+float kekuatanJatuh = 0.0;
+float keyakinanJatuh = 0.0;
+long milidetikJatuhBebas = 0;
+int idJatuh = 0;
+long waktuJatuhTerakhir = 0;
 
-// raw accel cache for debug/payload
-float ax_g = 0, ay_g = 0, az_g = 0, accTotal = 0;
+// Cache akselerasi mentah untuk debug/payload
+float ax_g = 0, ay_g = 0, az_g = 0, totalAkselerasi = 0;
 
-// Gyroscope data (untuk deteksi tongkat berputar saat jatuh)
-float gx_dps = 0, gy_dps = 0, gz_dps = 0, gyroTotal = 0;
-bool rotationDetected = false;
+// Data Gyroscope (untuk deteksi tongkat berputar saat jatuh)
+float gx_dps = 0, gy_dps = 0, gz_dps = 0, totalGyro = 0;
+bool rotasiTerdeteksi = false;
 
 // ================= BUZZER =================
-static const int BUZZER_PIN = 25;                 // pilih pin aman (bukan strapping)
-static const int BUZZER_FREQ = 2000;              // Hz, cukup nyaring
-static const unsigned long BUZZER_DURATION = 18000; // 18 detik
-static const unsigned long BEEP_PERIOD = 300;     // 150ms ON, 150ms OFF
+static const int PIN_BUZZER = 32;                     // pilih pin aman (bukan strapping)
+static const int FREKUENSI_BUZZER = 2000;             // Hz, cukup nyaring
+static const long DURASI_BUZZER = 18000;     // 18 detik
+static const long PERIODE_BIP = 300;         // 150ms ON, 150ms OFF
 
-bool buzzerActive = false;
-unsigned long buzzerStartMs = 0;
+bool buzzerAktif = false;
+long waktuMulaiBuzzer = 0;
 
-// ================= TIMING =================
-unsigned long lastSend = 0;
-const unsigned long sendInterval = 1000;
+// ================= WAKTU =================
+long waktuKirimTerakhir = 0;
+const long intervalKirim = 1000;
 
-WiFiClient wifiClient;
-WiFiClientSecure secureClient;  // For HTTPS/ngrok connection
+WiFiClient klienWifi;
+WiFiClientSecure klienAman;  // Untuk koneksi HTTPS/ngrok
 
-// ================= SEND FONNTE =================
-void sendFonnteAlert() {
+// ================= KIRIM FONNTE =================
+void kirimPeringatanFonnte() {
   if (WiFi.status() != WL_CONNECTED) return;
 
-  WiFiClientSecure secure;
-  secure.setInsecure(); // demo cepat
+  WiFiClientSecure amanSementara;
+  amanSementara.setInsecure(); // demo cepat
 
   HTTPClient http;
-  http.begin(secure, API_URL);
-  int code = http.GET();
+  http.begin(amanSementara, URL_API);
+  int kode = http.GET();
   Serial.print("[FONNTE HTTP ");
-  Serial.print(code);
+  Serial.print(kode);
   Serial.println("]");
   http.end();
 }
 
-// ================= BUZZER LOOP (non-blocking) =================
-void startBuzzerAlarm() {
-  buzzerActive = true;
-  buzzerStartMs = millis();
+// ================= LOOP BUZZER (non-blocking) =================
+void mulaiAlarmBuzzer() {
+  buzzerAktif = true;
+  waktuMulaiBuzzer = millis();
 }
 
-void handleBuzzer() {
-  if (!buzzerActive) return;
+void tanganiBuzzer() {
+  if (!buzzerAktif) return;
 
-  unsigned long now = millis();
-  unsigned long elapsed = now - buzzerStartMs;
+  long sekarang = millis();
+  long terlalui = sekarang - waktuMulaiBuzzer;
 
-  if (elapsed >= BUZZER_DURATION) {
-    noTone(BUZZER_PIN);     // stop
-    buzzerActive = false;
+  if (terlalui >= DURASI_BUZZER) {
+    noTone(PIN_BUZZER);     // stop
+    buzzerAktif = false;
     return;
   }
 
   // beep ON/OFF
-  unsigned long phase = elapsed % BEEP_PERIOD;
-  if (phase < (BEEP_PERIOD / 2)) {
-    tone(BUZZER_PIN, BUZZER_FREQ);   // ON
+  long fase = terlalui % PERIODE_BIP;
+  if (fase < (PERIODE_BIP / 2)) {
+    tone(PIN_BUZZER, FREKUENSI_BUZZER);   // ON
   } else {
-    noTone(BUZZER_PIN);              // OFF
+    noTone(PIN_BUZZER);                   // OFF
   }
 }
 
-// ================= FALL CHECK (OPTIMIZED FOR WALKING STICK) =================
-void checkFall() {
+// ================= CEK JATUH (DIOPTIMALKAN UNTUK TONGKAT JALAN) =================
+void cekJatuh() {
   if (!imuOk) return;
 
-  sensors_event_t a, g, temp;
-  mpu.getEvent(&a, &g, &temp);
+  sensors_event_t a, g, suhu;
+  mpu.getEvent(&a, &g, &suhu);
 
-  // Accelerometer data
+  // Data Accelerometer
   ax_g = a.acceleration.x / 9.81;
   ay_g = a.acceleration.y / 9.81;
   az_g = a.acceleration.z / 9.81;
-  accTotal = sqrt(ax_g*ax_g + ay_g*ay_g + az_g*az_g);
+  totalAkselerasi = sqrt(ax_g*ax_g + ay_g*ay_g + az_g*az_g);
 
-  // Gyroscope data (deteksi rotasi saat tongkat jatuh miring)
-  gx_dps = abs(g.gyro.x * 180.0 / PI);  // Convert rad/s to deg/s
+  // Data Gyroscope (deteksi rotasi saat tongkat jatuh miring)
+  gx_dps = abs(g.gyro.x * 180.0 / PI);  // Konversi rad/s ke deg/s
   gy_dps = abs(g.gyro.y * 180.0 / PI);
   gz_dps = abs(g.gyro.z * 180.0 / PI);
-  gyroTotal = sqrt(gx_dps*gx_dps + gy_dps*gy_dps + gz_dps*gz_dps);
+  totalGyro = sqrt(gx_dps*gx_dps + gy_dps*gy_dps + gz_dps*gz_dps);
 
-  unsigned long now = millis();
+  long sekarang = millis();
 
-  // Debug output every second
-  static unsigned long lastDebug = 0;
-  if (now - lastDebug > 1000) {
-    lastDebug = now;
+  // Output debug setiap detik
+  static long debugTerakhir = 0;
+  if (sekarang - debugTerakhir > 1000) {
+    debugTerakhir = sekarang;
     Serial.print("📊 ACC: ");
-    Serial.print(accTotal, 2);
+    Serial.print(totalAkselerasi, 2);
     Serial.print("g | GYRO: ");
-    Serial.print(gyroTotal, 0);
+    Serial.print(totalGyro, 0);
     Serial.print("°/s | Thresholds: acc<");
-    Serial.print(FALL_THR_LOW);
+    Serial.print(AMBANG_JATUH_RENDAH);
     Serial.print("g OR gyro>");
-    Serial.print(GYRO_ROTATION_THR);
+    Serial.print(AMBANG_ROTASI_GYRO);
     Serial.print("°/s, impact>");
-    Serial.print(IMPACT_THR);
+    Serial.print(AMBANG_BENTURAN);
     Serial.print("g");
-    if (inFreeFall) {
+    if (sedangJatuhBebas) {
       Serial.print(" | ⚠️ TONGKAT JATUH! Waiting for impact...");
     }
     Serial.println();
   }
 
-  if (now - lastFallAt < fallCooldown) return;
+  if (sekarang - waktuJatuhTerakhir < waktuJedaJatuh) return;
 
-  // Detect fall: Rotasi ATAU perubahan percepatan
-  if (!inFreeFall && (accTotal < FALL_THR_LOW || gyroTotal > GYRO_ROTATION_THR)) {
-    inFreeFall = true;
-    freeFallStart = now;
-    rotationDetected = (gyroTotal > GYRO_ROTATION_THR);
+  // Deteksi jatuh: Rotasi ATAU perubahan percepatan
+  if (!sedangJatuhBebas && (totalAkselerasi < AMBANG_JATUH_RENDAH || totalGyro > AMBANG_ROTASI_GYRO)) {
+    sedangJatuhBebas = true;
+    waktuMulaiJatuhBebas = sekarang;
+    rotasiTerdeteksi = (totalGyro > AMBANG_ROTASI_GYRO);
     
     Serial.println();
-    if (rotationDetected) {
+    if (rotasiTerdeteksi) {
       Serial.print("🔄 ROTASI! gyro=");
-      Serial.print(gyroTotal, 0);
+      Serial.print(totalGyro, 0);
       Serial.println("°/s");
     } else {
       Serial.print("⬇️ GERAKAN! acc=");
-      Serial.print(accTotal, 2);
+      Serial.print(totalAkselerasi, 2);
       Serial.println("g");
     }
   }
 
-  if (inFreeFall) {
+  if (sedangJatuhBebas) {
     // OPSI A: Tunggu impact (jatuh dari tinggi)
     // OPSI B: Auto-confirm setelah 500ms (orientasi berubah = jatuh)
     
-    unsigned long elapsed = now - freeFallStart;
+    long terlalui = sekarang - waktuMulaiJatuhBebas;
     
     // Konfirmasi jatuh jika:
-    // 1. Ada impact >1.05g, ATAU
+    // 1. Ada impact >1.3g, ATAU
     // 2. Sudah 500ms sejak rotasi/gerakan terdeteksi (auto-confirm)
     
-    bool hasImpact = (accTotal > IMPACT_THR);
-    bool autoConfirm = (elapsed > 500); // Auto-confirm setelah 500ms
+    bool adaBenturan = (totalAkselerasi > AMBANG_BENTURAN);
+    bool konfirmasiOtomatis = (terlalui > 500); // Auto-confirm setelah 500ms
     
-    if ((hasImpact || autoConfirm) && elapsed < IMPACT_WINDOW) {
-      fallDetected = true;
-      fallStrength = accTotal;
-      freefallMs = elapsed;
+    if ((adaBenturan || konfirmasiOtomatis) && terlalui < JENDELA_BENTURAN) {
+      jatuhTerdeteksi = true;
+      kekuatanJatuh = totalAkselerasi;
+      milidetikJatuhBebas = terlalui;
 
-      fallConfidence = (freefallMs / 800.0) * (fallStrength / 2.0);
-      if (fallConfidence > 1.0) fallConfidence = 1.0;
+      keyakinanJatuh = (milidetikJatuhBebas / 800.0) * (kekuatanJatuh / 2.0);
+      if (keyakinanJatuh > 1.0) keyakinanJatuh = 1.0;
 
-      fallId++;
-      lastFallAt = now;
-      inFreeFall = false;
+      idJatuh++;
+      waktuJatuhTerakhir = sekarang;
+      sedangJatuhBebas = false;
 
       Serial.println();
       Serial.println("🚨🚨🚨 TONGKAT JATUH! 🚨🚨🚨");
       Serial.print("  Trigger: ");
-      Serial.println(hasImpact ? "Impact" : "Auto (orientasi berubah)");
+      Serial.println(adaBenturan ? "Impact" : "Auto (orientasi berubah)");
       Serial.print("  Strength: ");
-      Serial.print(fallStrength, 2);
+      Serial.print(kekuatanJatuh, 2);
       Serial.println("g");
       Serial.print("  Duration: ");
-      Serial.print(freefallMs);
+      Serial.print(milidetikJatuhBebas);
       Serial.println("ms");
       Serial.print("  Rotasi: ");
-      Serial.println(rotationDetected ? "YES" : "NO");
-      Serial.println("🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨");
+      Serial.println(rotasiTerdeteksi ? "YES" : "NO");
+      Serial.println("🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨");
       Serial.println();
 
-      sendFonnteAlert();
-      startBuzzerAlarm();
+      kirimPeringatanFonnte();
+      mulaiAlarmBuzzer();
     }
 
     // Timeout
-    if (elapsed >= IMPACT_WINDOW) {
-      inFreeFall = false;
+    if (terlalui >= JENDELA_BENTURAN) {
+      sedangJatuhBebas = false;
       Serial.println("⏱️ Timeout");
     }
   }
@@ -250,9 +250,9 @@ void setup() {
   Serial.println();
   Serial.println("=== ESP32 GPS M10 + MPU6050 FALL + WIFI START ===");
 
-  // ---- buzzer pin ----
-  pinMode(BUZZER_PIN, OUTPUT);
-  noTone(BUZZER_PIN);
+  // ---- pin buzzer ----
+  pinMode(PIN_BUZZER, OUTPUT);
+  noTone(PIN_BUZZER);
 
   // ---- I2C MPU6050 ----
   Wire.begin(MPU_SDA_PIN, MPU_SCL_PIN);  // Initialize I2C with defined pins
@@ -279,7 +279,7 @@ void setup() {
 
   // ---- WiFi ----
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  WiFi.begin(namaSsid, kataSandi);
   Serial.print("Connecting WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -289,63 +289,62 @@ void setup() {
   Serial.print("WiFi OK, IP=");
   Serial.println(WiFi.localIP());
 
-  // Print fall detection configuration
   Serial.println();
   Serial.println("========== FALL DETECTION CONFIG ==========");
-  Serial.println("MODE: SUPER SENSITIF (1cm, auto-confirm 500ms)");
+  Serial.println("MODE: BALANCED (lebih stabil, kurangi false alarm)");
   Serial.print("  Movement threshold: <");
-  Serial.print(FALL_THR_LOW);
+  Serial.print(AMBANG_JATUH_RENDAH);
   Serial.println("g");
   Serial.print("  Gyro rotation threshold: >");
-  Serial.print(GYRO_ROTATION_THR);
+  Serial.print(AMBANG_ROTASI_GYRO);
   Serial.println("°/s");
   Serial.print("  Impact threshold: >");
-  Serial.print(IMPACT_THR);
+  Serial.print(AMBANG_BENTURAN);
   Serial.println("g (optional)");
   Serial.print("  Auto-confirm: 500ms");
   Serial.println();
   Serial.print("  Detection window: ");
-  Serial.print(IMPACT_WINDOW);
+  Serial.print(JENDELA_BENTURAN);
   Serial.println("ms");
   Serial.print("  Cooldown: ");
-  Serial.print(fallCooldown / 1000);
+  Serial.print(waktuJedaJatuh / 1000);
   Serial.println("s");
   Serial.println("===========================================");
   Serial.println();
 
-  lastNmeaMillis = millis();
+  milisTerakhirNmea = millis();
 }
 
 // ================= LOOP =================
 void loop() {
-  // ---- GPS read ----
+  // ---- baca GPS ----
   while (gpsSerial.available()) {
     char c = gpsSerial.read();
     gps.encode(c);
-    lastNmeaMillis = millis();
+    milisTerakhirNmea = millis();
     uartOk = true;
   }
-  if (millis() - lastNmeaMillis > uartTimeout) uartOk = false;
+  if (millis() - milisTerakhirNmea > waktuHabisUart) uartOk = false;
 
-  // update last valid fix
+  // perbarui fix valid terakhir
   if (gps.location.isValid()) {
-    lastFixValid = true;
-    lastLat = gps.location.lat();
-    lastLng = gps.location.lng();
-    lastSat = gps.satellites.value();
-    lastFixAt = millis();
+    lokasiTerakhirValid = true;
+    lintangTerakhir = gps.location.lat();
+    bujurTerakhir = gps.location.lng();
+    satelitTerakhir = gps.satellites.value();
+    waktuLokasiTerakhir = millis();
   }
 
-  // ---- IMU fall check ----
-  checkFall();
+  // ---- cek jatuh IMU ----
+  cekJatuh();
 
-  // ---- buzzer handle (non-blocking) ----
-  handleBuzzer();
+  // ---- tangani buzzer (non-blocking) ----
+  tanganiBuzzer();
 
-  // ---- send payload tiap 1 detik ----
-  unsigned long now = millis();
-  if (now - lastSend >= sendInterval) {
-    lastSend = now;
+  // ---- kirim payload tiap 1 detik ----
+  long sekarang = millis();
+  if (sekarang - waktuKirimTerakhir >= intervalKirim) {
+    waktuKirimTerakhir = sekarang;
 
     String payload = "{";
 
@@ -377,36 +376,36 @@ void loop() {
     payload += ",\"az_g\":";
     payload += String(az_g, 3);
     payload += ",\"acc_total\":";
-    payload += String(accTotal, 3);
+    payload += String(totalAkselerasi, 3);
     payload += ",";
 
     payload += "\"fall_detected\":";
-    payload += fallDetected ? "true" : "false";
+    payload += jatuhTerdeteksi ? "true" : "false";
 
-    if (fallDetected) {
+    if (jatuhTerdeteksi) {
       payload += ",\"fall_strength\":";
-      payload += String(fallStrength, 2);
+      payload += String(kekuatanJatuh, 2);
       payload += ",\"fall_confidence\":";
-      payload += String(fallConfidence, 2);
+      payload += String(keyakinanJatuh, 2);
       payload += ",\"freefall_ms\":";
-      payload += String(freefallMs);
+      payload += String(milidetikJatuhBebas);
       payload += ",\"fall_id\":";
-      payload += String(fallId);
+      payload += String(idJatuh);
       payload += ",\"fall_ts\":";
-      payload += String(now);
+      payload += String(sekarang);
 
-      if (lastFixValid) {
+      if (lokasiTerakhirValid) {
         payload += ",\"fall_lat\":";
-        payload += String(lastLat, 6);
+        payload += String(lintangTerakhir, 6);
         payload += ",\"fall_lng\":";
-        payload += String(lastLng, 6);
+        payload += String(bujurTerakhir, 6);
         payload += ",\"fall_sat\":";
-        payload += String(lastSat);
+        payload += String(satelitTerakhir);
         payload += ",\"fall_fix_age_ms\":";
-        payload += String(now - lastFixAt);
+        payload += String(sekarang - waktuLokasiTerakhir);
       }
 
-      fallDetected = false;
+      jatuhTerdeteksi = false;
     }
 
     payload += "}";
@@ -417,28 +416,28 @@ void loop() {
       HTTPClient http;
       
       // Use wifiClient for HTTP, secureClient for HTTPS
-      if (String(serverUrl).startsWith("https://")) {
-        secureClient.setInsecure();
-        http.begin(secureClient, serverUrl);
+      if (String(urlServer).startsWith("https://")) {
+        klienAman.setInsecure();
+        http.begin(klienAman, urlServer);
       } else {
-        http.begin(wifiClient, serverUrl);
+        http.begin(klienWifi, urlServer);
       }
       
       http.addHeader("Content-Type", "application/json");
       http.addHeader("ngrok-skip-browser-warning", "true");
       
-      int httpCode = http.POST(payload);
+      int kodeHttp = http.POST(payload);
       Serial.print("[HTTP ");
-      Serial.print(httpCode);
+      Serial.print(kodeHttp);
       Serial.println("]");
       
-      if (httpCode > 0) {
-        String response = http.getString();
+      if (kodeHttp > 0) {
+        String respons = http.getString();
         Serial.print("Response: ");
-        Serial.println(response);
+        Serial.println(respons);
       } else {
         Serial.print("Error: ");
-        Serial.println(http.errorToString(httpCode));
+        Serial.println(http.errorToString(kodeHttp));
       }
       
       http.end();
